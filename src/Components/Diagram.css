@@ -163,72 +163,121 @@
     padding: 8px;
   }
 }
-.modal {
+/* Modal Base */
+.modal.link-editor {
   position: fixed;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  background: #fff;
-  border-radius: 10px;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
-  padding: 20px;
-  width: 320px;
-  z-index: 999;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(20, 20, 20, 0.55);
+  z-index: 2000;
+  animation: fadeIn 0.2s ease-in;
 }
 
-.modal h3 {
+.modal-content {
+  background: #ffffff;
+  border-radius: 14px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
+  width: 380px;
+  padding: 24px 28px;
+  font-family: "Inter", sans-serif;
+  animation: slideUp 0.3s ease-out;
+}
+
+.modal-title {
+  font-size: 1.3rem;
+  font-weight: 600;
+  color: #1a1a1a;
   text-align: center;
-  margin-bottom: 15px;
-  font-size: 18px;
-  color: #333;
+  margin-bottom: 1rem;
 }
 
-.modal label {
-  display: block;
-  margin-top: 10px;
+/* Form Layout */
+.form-row {
+  display: flex;
+  flex-direction: column;
+  margin-bottom: 14px;
+}
+
+.form-row label {
+  font-size: 0.85rem;
   font-weight: 500;
+  color: #333;
+  margin-bottom: 4px;
+}
+
+.form-row select,
+.form-row input[type="text"],
+.form-row input[type="color"] {
+  padding: 8px 10px;
+  border: 1px solid #ccc;
+  border-radius: 6px;
+  font-size: 0.9rem;
+  outline: none;
+  transition: border-color 0.2s ease;
+}
+
+.form-row select:focus,
+.form-row input:focus {
+  border-color: #007bff;
+}
+
+/* Checkbox Group */
+.checkbox-group {
+  flex-direction: row;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.checkbox-group label {
+  font-size: 0.85rem;
   color: #444;
 }
 
-.modal select,
-.modal input[type="text"],
-.modal input[type="color"] {
-  width: 100%;
-  padding: 8px;
-  margin-top: 5px;
-  border: 1px solid #ccc;
-  border-radius: 5px;
-}
-
-.button-group {
+/* Buttons */
+.button-row {
   display: flex;
   justify-content: space-between;
   margin-top: 20px;
 }
 
-.save-btn {
-  background-color: #4caf50;
-  color: #fff;
+.btn {
+  flex: 1;
+  margin: 0 5px;
+  padding: 8px 10px;
   border: none;
-  padding: 6px 12px;
-  border-radius: 5px;
+  border-radius: 8px;
+  font-size: 0.9rem;
   cursor: pointer;
+  transition: all 0.2s ease;
+  color: #fff;
 }
 
-.cancel-btn {
-  background-color: #f1f1f1;
-  color: #333;
-  border: none;
-  padding: 6px 12px;
-  border-radius: 5px;
-  cursor: pointer;
+.btn.save {
+  background-color: #007bff;
 }
 
-.delete-btn {
-  background-color: #f44336;
-  color: #fff;
-  border: none;
-  padding: 6px 12px;
-  border-radius: 5px;
-  cursor: pointer;
+.btn.cancel {
+  background-color: #6c757d;
+}
+
+.btn.delete {
+  background-color: #dc3545;
+}
+
+.btn:hover {
+  transform: translateY(-1px);
+  opacity: 0.9;
+}
+
+/* Animations */
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes slideUp {
+  from { transform: translateY(25px); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
 }

@@ -103,58 +103,66 @@ const Diagram = () => {
            },
        $("Button",{click: (e, obj) => handleEditNode(obj.part.adornedPart),
   },
-  $(go.TextBlock, "✏️",{ margin: 5, font: "16px sans-serif" })
+  $(go.TextBlock, "✏️",{ margin: 5, font: "20px sans-serif" })
 ),
 $("Button",{click: (e, obj) => handleDeleteNode(obj.part.adornedPart),
   },
-  $(go.TextBlock, "🗑",{ margin: 5, font: "16px sans-serif" })
+  $(go.TextBlock, "🗑",{ margin: 5, font: "20px sans-serif" })
 )
       )
     );
 
-      diagram.linkTemplate = $(
-        go.Link,
-        {
-          routing: go.Routing.AvoidsNodes,
-          curve: go.Curve.None,
-          corner: 8,
-          relinkableFrom: true,
-          relinkableTo: true,
-          selectable: true,
-          click: (e, link) => {
-            const data = link.data;
-            setEditingLink(data);
-            setLinkFormData({
-              type: data.type || "Straight",
-              label: data.label || "",
-              animated: data.animated || "False",
-              color: data.color || "#4CAF50",
-            });
-          },
-        },
-        new go.Binding("curve", "type", (t) =>
-          t === "Curved" ? go.Curve.Bezier : go.Curve.None
-        ),
-        new go.Binding("strokeDashArray", "type", (t) =>
-          t === "Dashed" ? [5, 5] : null
-        ),
-        $(go.Shape, { strokeWidth: 2 }, new go.Binding("stroke", "color")),
-        $(go.Shape, { toArrow: "Standard" }, new go.Binding("fill", "color")),
-        $(go.TextBlock,
-          {
-            segmentOffset: new go.Point(0, -10),
-            font: "10px sans-serif",
-            stroke: "#333",
-          },
-          new go.Binding("text", "label")
-        )
-      );
+  diagram.linkTemplate = $(
+  go.Link,
+  {
+    routing: go.Routing.Normal,
+    curve: go.Curve.None,
+    corner: 10,
+    relinkableFrom: true,
+    relinkableTo: true,
+    reshapable: true,
+    resegmentable: true,
+    selectable: true,
+    toShortLength: 3,
+    click: (e, link) => {
+      const data = link.data;
+      // console.log("Link data on click:", data);
+      setEditingLink(data);
+      setLinkFormData({
+        routing: data.routing || "Normal",
+        curve: data.curve || "None",
+        dashed: !!data.dashed,
+        animated: !!data.animated,
+        color: data.color || "#4CAF50",
+        label: data.label || "",
+        arrow: data.arrow || "Standard"
+      });
+    },
+  },
 
+  new go.Binding("routing", "routing", (r) => go.Routing[r] || go.Routing.Normal),
+  new go.Binding("curve", "curve", (c) => go.Curve[c] || go.Curve.None),
+  new go.Binding("strokeDashArray", "dashed", (d) => (d ? [6, 4] : null)),
+  new go.Binding("isAnimated", "animated"),
+  $(go.Shape, { strokeWidth: 2 }, new go.Binding("stroke", "color")),
+  $(go.Shape, { toArrow: "Standard" }, new go.Binding("toArrow", "arrow"), new go.Binding("fill", "color")),
+  $(
+    go.TextBlock,
+    {
+      segmentOffset: new go.Point(0, -10),
+      font: "10px sans-serif",
+      stroke: "#333",
+      editable: true,
+    },
+    new go.Binding("text", "label").makeTwoWay()
+  )
+);
 
     diagram.model = new go.GraphLinksModel([], []);
     diagram.model.nodeKeyProperty = "id"; 
 
     const div = diagram.div;
+
     div.addEventListener("dragover", (e) => {
       e.preventDefault();
       e.dataTransfer.dropEffect = "copy";
@@ -192,7 +200,7 @@ $("Button",{click: (e, obj) => handleDeleteNode(obj.part.adornedPart),
         };
         const shapeMap = {
           Task: "RoundedRectangle",
-          Decision: "RoundedRectangle",
+          Decision: "Diamond",
           Output: "Triangle",
           Default: "RoundedRectangle"
         };
@@ -325,87 +333,146 @@ $("Button",{click: (e, obj) => handleDeleteNode(obj.part.adornedPart),
       </div>
     )}
 
-    {editingLink && (
-  <div className="modal">
-    <h3>Edit Edge</h3>
-    <form
-      onSubmit={(e) => {
-        e.preventDefault();
-        const diagram = myDiagramRef.current;
-        diagram.startTransaction("updateLink");
-        diagram.model.setDataProperty(editingLink, "type", linkFormData.type);
-        diagram.model.setDataProperty(editingLink, "label", linkFormData.label);
-        diagram.model.setDataProperty(editingLink, "animated", linkFormData.animated);
-        diagram.model.setDataProperty(editingLink, "color", linkFormData.color);
-        diagram.commitTransaction("updateLink");
-        setEditingLink(null);
-      }}
-    >
-      <label>Type:</label>
-      <select
-        value={linkFormData.type}
-        onChange={(e) =>
-          setLinkFormData({ ...linkFormData, type: e.target.value })
-        }
+   {editingLink && (
+  <div className="modal link-editor">
+    <div className="modal-content">
+      <h2 className="modal-title"> Edit Link Style</h2>
+      <form
+        onSubmit={(e) => {
+          e.preventDefault();
+          const diagram = myDiagramRef.current;
+          diagram.startTransaction("updateLink");
+          const link = editingLink;
+          diagram.model.setDataProperty(link, "routing", linkFormData.routing);
+          diagram.model.setDataProperty(link, "curve", linkFormData.curve);
+          diagram.model.setDataProperty(link, "dashed", linkFormData.dashed);
+          diagram.model.setDataProperty(link, "animated", linkFormData.animated);
+          diagram.model.setDataProperty(link, "color", linkFormData.color);
+          diagram.model.setDataProperty(link, "label", linkFormData.label);
+          diagram.model.setDataProperty(link, "arrow", linkFormData.arrow);
+          diagram.commitTransaction("updateLink");
+          setEditingLink(null);
+        }}
       >
-        <option value="Straight">Straight</option>
-        <option value="Curved">Curved</option>
-        <option value="Dashed">Dashed</option>
-      </select>
+        <div className="form-row">
+          <label>Routing:</label>
+          <select
+            value={linkFormData.routing}
+            onChange={(e) =>
+              setLinkFormData({ ...linkFormData, routing: e.target.value })
+            }
+          >
+            <option value="Normal">Normal</option>
+            <option value="Orthogonal">Orthogonal</option>
+            <option value="AvoidsNodes">Avoids Nodes</option>
+          </select>
+        </div>
 
-      <label>Label:</label>
-      <input
-        type="text"
-        value={linkFormData.label}
-        onChange={(e) =>
-          setLinkFormData({ ...linkFormData, label: e.target.value })
-        }
-      />
+        <div className="form-row">
+          <label>Curve:</label>
+          <select
+            value={linkFormData.curve}
+            onChange={(e) =>
+              setLinkFormData({ ...linkFormData, curve: e.target.value })
+            }
+          >
+            <option value="None">None</option>
+            <option value="Bezier">Bezier</option>
+            <option value="JumpOver">Jump Over</option>
+          </select>
+        </div>
 
-      <label>Animated:</label>
-      <select
-        value={linkFormData.animated}
-        onChange={(e) =>
-          setLinkFormData({ ...linkFormData, animated: e.target.value })
-        }
-      >
-        <option value="True">True</option>
-        <option value="False">False</option>
-      </select>
+        <div className="form-row">
+          <label>Arrow Style:</label>
+          <select
+            value={linkFormData.arrow}
+            onChange={(e) =>
+              setLinkFormData({ ...linkFormData, arrow: e.target.value })
+            }
+          >
+            <option value="Standard">Standard</option>
+            <option value="Triangle">Triangle</option>
+            <option value="Circle">Circle</option>
+            <option value="DoubleTriangle">Double Triangle</option>
+            <option value="Backward">Backward</option>
+            <option value="OpenTriangle">Open Triangle</option>
+          </select>
+        </div>
 
-      <label>Edge Color:</label>
-      <input
-        type="color"
-        value={linkFormData.color}
-        onChange={(e) =>
-          setLinkFormData({ ...linkFormData, color: e.target.value })
-        }
-      />
+        {/* <div className="form-row checkbox-group">
+          <label>
+            <input
+              type="checkbox"
+              checked={linkFormData.dashed}
+              onChange={(e) =>
+                setLinkFormData({ ...linkFormData, dashed: e.target.checked })
+              }
+            />
+            Dashed Line
+          </label>
+          <label>
+            <input
+              type="checkbox"
+              checked={linkFormData.animated}
+              onChange={(e) =>
+                setLinkFormData({ ...linkFormData, animated: e.target.checked })
+              }
+            />
+            Animated Link
+          </label>
+        </div> */}
 
-      <div className="button-group">
-        <button type="submit" className="save-btn">Save</button>
-        <button
-          type="button"
-          className="cancel-btn"
-          onClick={() => setEditingLink(null)}
-        >
-          Cancel
-        </button>
-        <button
-          type="button"
-          className="delete-btn"
-          onClick={() => {
-            const diagram = myDiagramRef.current;
-            diagram.startTransaction("deleteLink");
-            diagram.remove(diagram.findLinkForData(editingLink));
-            diagram.commitTransaction("deleteLink");
-            setEditingLink(null);
-          }}
-        >
-          Delete Edge
-        </button>
-      </div>
-    </form>
+        <div className="form-row">
+          <label>Color:</label>
+          <input
+            type="color"
+            value={linkFormData.color}
+            onChange={(e) =>
+              setLinkFormData({ ...linkFormData, color: e.target.value })
+            }
+          />
+        </div>
+
+        <div className="form-row">
+          <label>Label:</label>
+          <input
+            type="text"
+            placeholder="Enter link label"
+            value={linkFormData.label}
+            onChange={(e) =>
+              setLinkFormData({ ...linkFormData, label: e.target.value })
+            }
+          />
+        </div>
+
+        <div className="button-row">
+          <button type="submit" className="btn save">
+            Save
+          </button>
+          <button
+            type="button"
+            className="btn cancel"
+            onClick={() => setEditingLink(null)}
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            className="btn delete"
+            style={{backgroundColor:"red"}}
+            onClick={() => {
+              const diagram = myDiagramRef.current;
+              diagram.startTransaction("deleteLink");
+              diagram.remove(diagram.findLinkForData(editingLink));
+              diagram.commitTransaction("deleteLink");
+              setEditingLink(null);
+            }}
+          >
+            Delete
+          </button>
+        </div>
+      </form>
+    </div>
   </div>
 )}
 
