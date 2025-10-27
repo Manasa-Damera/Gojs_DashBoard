@@ -163,3 +163,72 @@
     padding: 8px;
   }
 }
+.modal {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  background: #fff;
+  border-radius: 10px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+  padding: 20px;
+  width: 320px;
+  z-index: 999;
+}
+
+.modal h3 {
+  text-align: center;
+  margin-bottom: 15px;
+  font-size: 18px;
+  color: #333;
+}
+
+.modal label {
+  display: block;
+  margin-top: 10px;
+  font-weight: 500;
+  color: #444;
+}
+
+.modal select,
+.modal input[type="text"],
+.modal input[type="color"] {
+  width: 100%;
+  padding: 8px;
+  margin-top: 5px;
+  border: 1px solid #ccc;
+  border-radius: 5px;
+}
+
+.button-group {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 20px;
+}
+
+.save-btn {
+  background-color: #4caf50;
+  color: #fff;
+  border: none;
+  padding: 6px 12px;
+  border-radius: 5px;
+  cursor: pointer;
+}
+
+.cancel-btn {
+  background-color: #f1f1f1;
+  color: #333;
+  border: none;
+  padding: 6px 12px;
+  border-radius: 5px;
+  cursor: pointer;
+}
+
+.delete-btn {
+  background-color: #f44336;
+  color: #fff;
+  border: none;
+  padding: 6px 12px;
+  border-radius: 5px;
+  cursor: pointer;
+}

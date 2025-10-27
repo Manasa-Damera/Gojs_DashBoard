@@ -6,10 +6,12 @@ import "./Diagram.css";
 const Diagram = () => {
   const diagramRef = useRef();
   const myDiagramRef = useRef(null);
-
   const [editingNode, setEditingNode] = useState(null);
   const [formData, setFormData] = useState({ name: "", description: "" });
-
+  const [showSaveForm, setShowSaveForm] = useState(false);
+  const [saveFormData, setSaveFormData] = useState({ flowName: "" , flowDescription:""});
+  const [editingLink , setEditingLink] = useState(null);
+  const [linkFormData , setLinkFormData] = useState({type:"", label: "", animated:true, color:"#4CAF50"});
   useEffect(() => {
     const $ = go.GraphObject.make;
 
@@ -79,7 +81,7 @@ const Diagram = () => {
           $(go.TextBlock,
             { margin: 2, editable: true, font: "10px sans-serif", stroke: "#333" },
             new go.Binding("text", "description").makeTwoWay()
-          )
+          ),
         )
       ),
 
@@ -110,21 +112,47 @@ $("Button",{click: (e, obj) => handleDeleteNode(obj.part.adornedPart),
       )
     );
 
-    diagram.linkTemplate = $(
-      go.Link,
-      {
-        routing: go.Link.AvoidsNodes,
-        curve: go.Link.JumpOver,
-        corner: 8,
-        relinkableFrom: true,
-        relinkableTo: true,
-        reshapable: true,
-      },
-      $(go.Shape, { strokeWidth: 2, stroke: "#555" }),
-      $(go.Shape, { toArrow: "Standard", fill: "#555" })
-    );
+      diagram.linkTemplate = $(
+        go.Link,
+        {
+          routing: go.Routing.AvoidsNodes,
+          curve: go.Curve.None,
+          corner: 8,
+          relinkableFrom: true,
+          relinkableTo: true,
+          selectable: true,
+          click: (e, link) => {
+            const data = link.data;
+            setEditingLink(data);
+            setLinkFormData({
+              type: data.type || "Straight",
+              label: data.label || "",
+              animated: data.animated || "False",
+              color: data.color || "#4CAF50",
+            });
+          },
+        },
+        new go.Binding("curve", "type", (t) =>
+          t === "Curved" ? go.Curve.Bezier : go.Curve.None
+        ),
+        new go.Binding("strokeDashArray", "type", (t) =>
+          t === "Dashed" ? [5, 5] : null
+        ),
+        $(go.Shape, { strokeWidth: 2 }, new go.Binding("stroke", "color")),
+        $(go.Shape, { toArrow: "Standard" }, new go.Binding("fill", "color")),
+        $(go.TextBlock,
+          {
+            segmentOffset: new go.Point(0, -10),
+            font: "10px sans-serif",
+            stroke: "#333",
+          },
+          new go.Binding("text", "label")
+        )
+      );
+
 
     diagram.model = new go.GraphLinksModel([], []);
+    diagram.model.nodeKeyProperty = "id"; 
 
     const div = diagram.div;
     div.addEventListener("dragover", (e) => {
@@ -139,10 +167,10 @@ $("Button",{click: (e, obj) => handleDeleteNode(obj.part.adornedPart),
 
       const nodeData = JSON.parse(data);
       const point = diagram.transformViewToDoc(diagram.lastInput.viewPoint);
-      const key = diagram.model.nodeDataArray.length + 1;
+      const id = Date.now();
 
       const newNodeData = {
-        key,
+        id,
         text: nodeData.text,
         type: nodeData.type,
         color: "#d3e6f5",
@@ -164,10 +192,11 @@ $("Button",{click: (e, obj) => handleDeleteNode(obj.part.adornedPart),
         };
         const shapeMap = {
           Task: "RoundedRectangle",
-          Decision: "Diamond",
-          Alert: "Triangle"
+          Decision: "RoundedRectangle",
+          Output: "Triangle",
+          Default: "RoundedRectangle"
         };
-        const existingNode = diagram.model.findNodeDataForKey(key);
+        const existingNode = diagram.model.findNodeDataForKey(id);
         if (existingNode) {
           diagram.model.setDataProperty(existingNode, "color", colorMap[nodeData.type]);
           diagram.model.setDataProperty(existingNode, "shape", shapeMap[nodeData.type]);
@@ -204,24 +233,34 @@ $("Button",{click: (e, obj) => handleDeleteNode(obj.part.adornedPart),
     setEditingNode(null);
   };
 
- const handleSave = () => {
+  const handleSave = ()=>{
+    setShowSaveForm(true);
+  }
+  const handleSubmitSaveForm = (e) => {
+  e.preventDefault();
   const diagram = myDiagramRef.current;
+  const flowId = "flow-"+ Date.now();
 
   const dataToSave = {
+    id: flowId,
+    flowName: saveFormData.flowName,
+    flowDescription: saveFormData.flowDescription,
     nodes: diagram.model.nodeDataArray,
     links: diagram.model.linkDataArray,
   };
-  localStorage.setItem("Data", JSON.stringify(dataToSave));
-  alert("Saved to local storage");
+
+  const existingFlows = JSON.parse(localStorage.getItem("Flows")) || [];
+  existingFlows.push(dataToSave);
+  localStorage.setItem("Flows", JSON.stringify(existingFlows));
+  alert("Flow saved successfully!");
 
   diagram.startTransaction("clearDiagram");
-  diagram.model.startTransaction("clearNodesLinks");
-
   diagram.model.nodeDataArray = [];
   diagram.model.linkDataArray = [];
-
-  diagram.model.commitTransaction("clearNodesLinks");
   diagram.commitTransaction("clearDiagram");
+
+  setShowSaveForm(false);
+  setSaveFormData({ flowName: "", flowDescription: "" });
 };
 
 
@@ -254,6 +293,122 @@ $("Button",{click: (e, obj) => handleDeleteNode(obj.part.adornedPart),
           </form>
         </div>
       )}
+      {showSaveForm && (
+      <div className="modal">
+        <h3>Save Flow</h3>
+        <form onSubmit={handleSubmitSaveForm}>
+          <label>Flow Name:</label>
+          <input
+            type="text"
+            value={saveFormData.flowName}
+            onChange={(e) =>
+              setSaveFormData({ ...saveFormData, flowName: e.target.value })
+            }
+            required
+          />
+          <label>Flow Description:</label>
+          <textarea
+            value={saveFormData.flowDescription}
+            onChange={(e) =>
+              setSaveFormData({
+                ...saveFormData,
+                flowDescription: e.target.value,
+              })
+            }
+            required
+          />
+          <button type="submit">Save</button>
+          <button type="button" onClick={() => setShowSaveForm(false)}>
+            Cancel
+          </button>
+        </form>
+      </div>
+    )}
+
+    {editingLink && (
+  <div className="modal">
+    <h3>Edit Edge</h3>
+    <form
+      onSubmit={(e) => {
+        e.preventDefault();
+        const diagram = myDiagramRef.current;
+        diagram.startTransaction("updateLink");
+        diagram.model.setDataProperty(editingLink, "type", linkFormData.type);
+        diagram.model.setDataProperty(editingLink, "label", linkFormData.label);
+        diagram.model.setDataProperty(editingLink, "animated", linkFormData.animated);
+        diagram.model.setDataProperty(editingLink, "color", linkFormData.color);
+        diagram.commitTransaction("updateLink");
+        setEditingLink(null);
+      }}
+    >
+      <label>Type:</label>
+      <select
+        value={linkFormData.type}
+        onChange={(e) =>
+          setLinkFormData({ ...linkFormData, type: e.target.value })
+        }
+      >
+        <option value="Straight">Straight</option>
+        <option value="Curved">Curved</option>
+        <option value="Dashed">Dashed</option>
+      </select>
+
+      <label>Label:</label>
+      <input
+        type="text"
+        value={linkFormData.label}
+        onChange={(e) =>
+          setLinkFormData({ ...linkFormData, label: e.target.value })
+        }
+      />
+
+      <label>Animated:</label>
+      <select
+        value={linkFormData.animated}
+        onChange={(e) =>
+          setLinkFormData({ ...linkFormData, animated: e.target.value })
+        }
+      >
+        <option value="True">True</option>
+        <option value="False">False</option>
+      </select>
+
+      <label>Edge Color:</label>
+      <input
+        type="color"
+        value={linkFormData.color}
+        onChange={(e) =>
+          setLinkFormData({ ...linkFormData, color: e.target.value })
+        }
+      />
+
+      <div className="button-group">
+        <button type="submit" className="save-btn">Save</button>
+        <button
+          type="button"
+          className="cancel-btn"
+          onClick={() => setEditingLink(null)}
+        >
+          Cancel
+        </button>
+        <button
+          type="button"
+          className="delete-btn"
+          onClick={() => {
+            const diagram = myDiagramRef.current;
+            diagram.startTransaction("deleteLink");
+            diagram.remove(diagram.findLinkForData(editingLink));
+            diagram.commitTransaction("deleteLink");
+            setEditingLink(null);
+          }}
+        >
+          Delete Edge
+        </button>
+      </div>
+    </form>
+  </div>
+)}
+
     </div>
   );
 };
