@@ -2,10 +2,14 @@ import { useEffect, useRef, useState } from "react";
 import * as go from "gojs";
 import Sidebar from "./Sidebar";
 import "./Diagram.css";
+import { useParams , useNavigate} from "react-router-dom";
 
 const Diagram = () => {
   const diagramRef = useRef();
   const myDiagramRef = useRef(null);
+  const {id} = useParams();
+  const navigate = useNavigate();
+
   const [editingNode, setEditingNode] = useState(null);
   const [formData, setFormData] = useState({ name: "", description: "" });
   const [showSaveForm, setShowSaveForm] = useState(false);
@@ -158,8 +162,11 @@ $("Button",{click: (e, obj) => handleDeleteNode(obj.part.adornedPart),
   )
 );
 
-    diagram.model = new go.GraphLinksModel([], []);
-    diagram.model.nodeKeyProperty = "id"; 
+    const model = new go.GraphLinksModel([], []);
+    model.nodeKeyProperty = "key"; // ✅ CHANGED (was id)
+    model.linkFromKeyProperty = "from"; // ✅ CHANGED
+    model.linkToKeyProperty = "to"; // ✅ CHANGED
+    diagram.model = model; // 🟡 ADDED
 
     const div = diagram.div;
 
@@ -178,7 +185,7 @@ $("Button",{click: (e, obj) => handleDeleteNode(obj.part.adornedPart),
       const id = Date.now();
 
       const newNodeData = {
-        id,
+        key:id,
         text: nodeData.text,
         type: nodeData.type,
         color: "#d3e6f5",
@@ -204,7 +211,7 @@ $("Button",{click: (e, obj) => handleDeleteNode(obj.part.adornedPart),
           Output: "Triangle",
           Default: "RoundedRectangle"
         };
-        const existingNode = diagram.model.findNodeDataForKey(id);
+        const existingNode = diagram.model.findNodeDataForKey(key);
         if (existingNode) {
           diagram.model.setDataProperty(existingNode, "color", colorMap[nodeData.type]);
           diagram.model.setDataProperty(existingNode, "shape", shapeMap[nodeData.type]);
@@ -215,6 +222,34 @@ $("Button",{click: (e, obj) => handleDeleteNode(obj.part.adornedPart),
 
     return () => (diagram.div = null);
   }, []);
+
+   useEffect(() => {
+    if (id && myDiagramRef.current) {
+      const savedFlows = JSON.parse(localStorage.getItem("Flows")) || [];
+      const currentFlow = savedFlows.find((flow) => flow.id === id);
+
+      if (currentFlow) {
+        const diagram = myDiagramRef.current;
+        const normalizedNodes = (currentFlow.nodes || []).map((n) => ({
+          ...n,
+          key: n.key ?? n.id, // ✅ fallback for old data
+        }));
+        const normalizedLinks = (currentFlow.links || []).map((l) => ({
+          ...l,
+          from: l.from ?? l.source,
+          to: l.to ?? l.target,
+        }));
+
+        const model = new go.GraphLinksModel(normalizedNodes, normalizedLinks);
+        model.nodeKeyProperty = "key";
+        model.linkFromKeyProperty = "from";
+        model.linkToKeyProperty = "to";
+        diagram.model = model;
+      }
+    }
+  }, [id]);
+
+
 
   const handleDeleteNode = (node) => {
     const diagram = myDiagramRef.current;
@@ -261,7 +296,7 @@ $("Button",{click: (e, obj) => handleDeleteNode(obj.part.adornedPart),
   existingFlows.push(dataToSave);
   localStorage.setItem("Flows", JSON.stringify(existingFlows));
   alert("Flow saved successfully!");
-
+  navigate("/flows");
   diagram.startTransaction("clearDiagram");
   diagram.model.nodeDataArray = [];
   diagram.model.linkDataArray = [];
