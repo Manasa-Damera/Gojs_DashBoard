@@ -7,7 +7,7 @@ const nodeTypes = [
   { type: "Default", text: "Default Node" },
 ];
 
-const Sidebar = ({onSave}) => {
+const Sidebar = ({onSave,id}) => {
   const handleDragStart = (e, nodeData) => {
     e.dataTransfer.setData("application/my-node", JSON.stringify(nodeData));
     e.dataTransfer.effectAllowed = "copy";
@@ -26,7 +26,7 @@ const Sidebar = ({onSave}) => {
           {node.text}
         </div>
       ))}
-      <button onClick={onSave} className="save-btn"> Save</button>
+      <button onClick={onSave} className="save-btn"> {id ? "Update" : "Save"}</button>
     </div>
   );
 };

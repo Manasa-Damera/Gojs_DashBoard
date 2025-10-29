@@ -223,18 +223,6 @@
   border-color: #007bff;
 }
 
-/* Checkbox Group */
-.checkbox-group {
-  flex-direction: row;
-  justify-content: space-between;
-  align-items: center;
-}
-
-.checkbox-group label {
-  font-size: 0.85rem;
-  color: #444;
-}
-
 /* Buttons */
 .button-row {
   display: flex;
