@@ -5,6 +5,7 @@ const nodeTypes = [
   { type: "Decision", text: "Decision Node" },
   { type: "Output", text: "Output Node" },
   { type: "Default", text: "Default Node" },
+  {type: "Group", text: "Group Node" },
 ];
 
 const Sidebar = ({onSave,id}) => {

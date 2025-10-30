@@ -10,14 +10,10 @@ const Diagram = () => {
   const { id } = useParams();
   const navigate = useNavigate();
 
-  // 🔹 State
   const [editingNode, setEditingNode] = useState(null);
   const [formData, setFormData] = useState({ name: "", description: "" });
   const [showSaveForm, setShowSaveForm] = useState(false);
-  const [saveFormData, setSaveFormData] = useState({
-    flowName: "",
-    flowDescription: "",
-  });
+  const [saveFormData, setSaveFormData] = useState({ flowName: "", flowDescription: "" });
   const [editingLink, setEditingLink] = useState(null);
   const [linkFormData, setLinkFormData] = useState({
     routing: "Normal",
@@ -29,7 +25,61 @@ const Diagram = () => {
     arrow: "Standard",
   });
 
-  // Initialize GoJS Diagram
+  //  ports
+  const makePort = useCallback((name, spot, output, input) => {
+    const $ = go.GraphObject.make;
+    return $(
+      go.Shape,
+      "Circle",
+      {
+        fill: "transparent",
+        stroke: null,
+        desiredSize: new go.Size(8, 8),
+        alignment: spot,
+        alignmentFocus: spot,
+        portId: name,
+        fromSpot: spot,
+        toSpot: spot,
+        fromLinkable: output,
+        toLinkable: input,
+        cursor: "pointer",
+        mouseEnter: (_, port) => (port.fill = "rgba(0,0,0,.3)"),
+        mouseLeave: (_, port) => (port.fill = "transparent"),
+      }
+    );
+  }, []);
+
+  //  Handlers
+  const handleEditNode = useCallback((node) => {
+    setEditingNode(node);
+    setFormData({
+      name: node.data.text || "",
+      description: node.data.description || "",
+    });
+  }, []);
+
+  const handleDeleteNode = useCallback((node) => {
+    const diagram = myDiagramRef.current;
+    diagram.startTransaction("deleteNode");
+    diagram.remove(node);
+    diagram.commitTransaction("deleteNode");
+  }, []);
+
+  const handleLinkClick = useCallback((data) => {
+  setLinkFormData({
+    routing: data.routing || "Normal",
+    curve: data.curve || "None",
+    dashed: data.dashed || false,
+    animated: data.animated ?? true,
+    color: data.color || "#4CAF50",
+    label: data.label || "",
+    arrow: data.arrow || "Standard",
+  });
+  setEditingLink(data);
+}, []);
+
+
+  //  Diagram initialization
   useEffect(() => {
     const $ = go.GraphObject.make;
     const diagram = $(go.Diagram, diagramRef.current, {
@@ -42,7 +92,7 @@ const Diagram = () => {
       "relinkingTool.isEnabled": true,
       padding: 10,
     });
-    
+
     myDiagramRef.current = diagram;
 
     // Background grid
@@ -54,30 +104,86 @@ const Diagram = () => {
       $(go.Shape, "LineH", { stroke: "#ccc", strokeWidth: 1 }),
       $(go.Shape, "LineV", { stroke: "#ccc", strokeWidth: 1 })
     );
+
     diagram.toolManager.draggingTool.isGridSnapEnabled = true;
     diagram.toolManager.draggingTool.gridSnapCellSize = new go.Size(40, 40);
 
-   function makePort(name, spot, output, input) {
-      return $(
-        go.Shape,
-        "Circle",
+    // Group Template
+    diagram.groupTemplate = $(
+      go.Group,
+      "Auto",
+      {
+        background: "transparent",
+        ungroupable: true,
+        computesBoundsAfterDrag: true,
+        handlesDragDropForMembers: true,
+
+        mouseDrop: (e, grp) => {
+          const sel = grp.diagram.selection;
+          grp.diagram.startTransaction("addToGroup");
+          sel.each((part) => {
+            if (part instanceof go.Node && !part.data.isGroup) {
+              grp.diagram.model.setDataProperty(part.data, "group", grp.data.key);
+              console.log(`📦 ${part.data.text} → ${grp.data.text}`);
+            }
+          });
+          grp.diagram.commitTransaction("addToGroup");
+        },
+
+        mouseDragEnter: (_, grp) => {
+          grp.isHighlighted = true;
+          const shape = grp.findObject("SHAPE");
+          if (shape) shape.stroke = "#0078D7";
+        },
+        mouseDragLeave: (_, grp) => {
+          grp.isHighlighted = false;
+          const shape = grp.findObject("SHAPE");
+          if (shape) shape.stroke = "#4a90e2";
+        },
+      },
+      new go.Binding("location", "loc", go.Point.parse).makeTwoWay(go.Point.stringify),
+
+      $(go.Shape, "RoundedRectangle", {
+        name: "SHAPE",
+        fill: "rgba(230,240,255,0.3)",
+        stroke: "#4a90e2",
+        strokeWidth: 2,
+        parameter1: 10,
+      }),
+      $(
+        go.Panel,
+        "Vertical",
+        { margin: 10 },
+        $(go.TextBlock, {
+          margin: new go.Margin(6, 0, 4, 0),
+          font: "bold 13px sans-serif",
+          editable: true,
+        }, new go.Binding("text").makeTwoWay()),
+        $(go.Placeholder, { padding: 10 })
+      )
+    );
+
+    //  Group Adornment (Toolbar)
+    diagram.groupTemplate.selectionAdornmentTemplate = $(
+      go.Adornment,
+      "Spot",
+      $(go.Panel, "Auto", $(go.Shape, { fill: null, stroke: "blue", strokeWidth: 1 }), $(go.Placeholder)),
+      $(
+        go.Panel,
+        "Horizontal",
         {
-          fill: "transparent",
-          stroke: null,
-          desiredSize: new go.Size(8, 8),
-          alignment: spot,
-          alignmentFocus: spot,
-          portId: name,
-          fromSpot: spot,
-          toSpot: spot,
-          fromLinkable: output,
-          toLinkable: input,
+          alignment: new go.Spot(0, 0, -20, -15),
+          background: "rgba(255,255,255,0.9)",
           cursor: "pointer",
-          mouseEnter: (e, port) => (port.fill = "rgba(0,0,0,.3)"),
-          mouseLeave: (e, port) => (port.fill = "transparent"),
-        }
-      );
-    }
+        },
+        $("Button", { click: (_, obj) => handleEditNode(obj.part.adornedPart) },
+          $(go.TextBlock, "✏️", { margin: 4, font: "14px sans-serif" })
+        ),
+        $("Button", { click: (_, obj) => handleDeleteNode(obj.part.adornedPart) },
+          $(go.TextBlock, "🗑", { margin: 4, font: "14px sans-serif" })
+        )
+      )
+    );
 
     // Node Template
     diagram.nodeTemplate = $(
@@ -88,9 +194,7 @@ const Diagram = () => {
       $(
         go.Panel,
         "Auto",
-        $(
-          go.Shape,
-          "RoundedRectangle",
+        $(go.Shape, "RoundedRectangle",
           { strokeWidth: 1, fill: "#d3e6f5", height: 50 },
           new go.Binding("figure", "shape").makeTwoWay(),
           new go.Binding("fill", "color").makeTwoWay()
@@ -98,34 +202,35 @@ const Diagram = () => {
         $(
           go.Panel,
           "Vertical",
-          $(go.TextBlock, { margin: 5, editable: true, font: "12px sans-serif" }, new go.Binding("text").makeTwoWay()),
-          $(go.TextBlock, { margin: 2, editable: true, font: "10px sans-serif", stroke: "#333" }, new go.Binding("text", "description").makeTwoWay())
+          $(go.TextBlock, { margin: 5, editable: true, font: "12px sans-serif" },
+            new go.Binding("text").makeTwoWay()
+          ),
+          $(go.TextBlock, { margin: 2, editable: true, font: "10px sans-serif", stroke: "#333" },
+            new go.Binding("text", "description").makeTwoWay()
+          )
         )
       ),
       makePort("L", go.Spot.Left, false, true),
       makePort("R", go.Spot.Right, true, false)
     );
 
-    // 🖊️ Node Adornment (Edit/Delete)
+    //  Node Edit/Delete Adornment for action nodes
     diagram.nodeTemplate.selectionAdornmentTemplate = $(
       go.Adornment,
       "Spot",
-      $(
-        go.Panel,
-        "Auto",
-        $(go.Shape, { fill: null, stroke: "blue", strokeWidth: 1 }),
-        $(go.Placeholder)
-      ),
+      $(go.Panel, "Auto", $(go.Shape, { fill: null, stroke: "blue", strokeWidth: 1 }), $(go.Placeholder)),
       $(
         go.Panel,
         "Horizontal",
         { alignment: go.Spot.TopLeft, alignmentFocus: go.Spot.BottomLeft, background: "rgba(255,255,255,0.9)" },
-        $("Button", { click: (_, obj) => handleEditNode(obj.part.adornedPart) }, $(go.TextBlock, "✏️", { margin: 5, font: "20px sans-serif" })),
-        $("Button", { click: (_, obj) => handleDeleteNode(obj.part.adornedPart) }, $(go.TextBlock, "🗑", { margin: 5, font: "20px sans-serif" }))
+        $("Button", { click: (_, obj) => handleEditNode(obj.part.adornedPart) },
+          $(go.TextBlock, "✏️", { margin: 5, font: "20px sans-serif" })),
+        $("Button", { click: (_, obj) => handleDeleteNode(obj.part.adornedPart) },
+          $(go.TextBlock, "🗑", { margin: 5, font: "20px sans-serif" }))
       )
     );
 
-    // 🔗 Link Template
+    // Link Template
     diagram.linkTemplate = $(
       go.Link,
       {
@@ -146,80 +251,82 @@ const Diagram = () => {
       new go.Binding("isAnimated", "animated"),
       $(go.Shape, { strokeWidth: 2 }, new go.Binding("stroke", "color")),
       $(go.Shape, { toArrow: "Standard" }, new go.Binding("toArrow", "arrow"), new go.Binding("fill", "color")),
-      $(go.TextBlock, { segmentOffset: new go.Point(0, -10), font: "10px sans-serif", stroke: "#333", editable: true }, new go.Binding("text", "label").makeTwoWay())
+      $(go.TextBlock, { segmentOffset: new go.Point(0, -10), font: "10px sans-serif", stroke: "#333", editable: true },
+        new go.Binding("text", "label").makeTwoWay())
     );
 
-    diagram.model = new go.GraphLinksModel([], []);
-    diagram.model.nodeKeyProperty = "key";
-    diagram.model.linkFromKeyProperty = "from";
-    diagram.model.linkToKeyProperty = "to";
+    // Model setup
+    const model = new go.GraphLinksModel([], []);
+    model.nodeKeyProperty = "key";
+    model.linkFromKeyProperty = "from";
+    model.linkToKeyProperty = "to";
+    diagram.model = model;
 
-    //  Drop Handler
+    // Handle drag/drop
+    const div = diagram.div;
     const handleDrop = (e) => {
       e.preventDefault();
       const data = e.dataTransfer.getData("application/my-node");
       if (!data) return;
+
       const nodeData = JSON.parse(data);
-
-      // positions for dropping the node
       const rect = div.getBoundingClientRect();
-      const x = e.clientX - rect.left;
-      const y = e.clientY - rect.top;
-      const point = diagram.transformViewToDoc(new go.Point(x, y));
+      const point = diagram.transformViewToDoc(new go.Point(e.clientX - rect.left, e.clientY - rect.top));
 
-      const id = Date.now();
       const colorMap = { Task: "#fff", Decision: "#fff", Output: "#fff", Default: "#d3e6f5" };
-      const shapeMap = { Task: "RoundedRectangle", Decision: "Diamond", Output: "Triangle" ,Default: "RoundedRectangle" };
+      const shapeMap = { Task: "RoundedRectangle", Decision: "Diamond", Output: "Triangle", Default: "RoundedRectangle" };
 
-      diagram.startTransaction("addNode");
-      diagram.model.addNodeData({
-        key: id,
-        text: nodeData.text,
-        type: nodeData.type,
-        color: colorMap[nodeData.type] || "#d3e6f5",
-        shape: shapeMap[nodeData.type] || "RoundedRectangle",
-        loc: go.Point.stringify(point),
-        description: "",
-      });
-      diagram.commitTransaction("addNode");
+      diagram.startTransaction("drop");
+      if (nodeData.type === "Group") {
+        diagram.model.addNodeData({
+          key: Date.now(),
+          isGroup: true,
+          text: nodeData.text,
+          loc: go.Point.stringify(point),
+        });
+      } else {
+        diagram.model.addNodeData({
+          key: Date.now(),
+          text: nodeData.text,
+          type: nodeData.type,
+          color: colorMap[nodeData.type] || "#d3e6f5",
+          shape: shapeMap[nodeData.type] || "RoundedRectangle",
+          loc: go.Point.stringify(point),
+          description: "",
+        });
+      }
+      diagram.commitTransaction("drop");
     };
 
-    const div = diagram.div;
     div.addEventListener("dragover", (e) => e.preventDefault());
     div.addEventListener("drop", handleDrop);
 
     return () => (diagram.div = null);
-  }, []);
+  }, [handleEditNode, handleDeleteNode, handleLinkClick, makePort]);
 
-  // Load saved flow for editing
+  // to Load saved flow
   useEffect(() => {
     if (!id || !myDiagramRef.current) return;
     const savedFlows = JSON.parse(localStorage.getItem("Flows")) || [];
     const currentFlow = savedFlows.find((flow) => flow.id === id);
+    const diagram = myDiagramRef.current;
+
     if (currentFlow) {
       setSaveFormData({
         flowName: currentFlow.flowName || "",
         flowDescription: currentFlow.flowDescription || "",
-      })
+      });
       const model = new go.GraphLinksModel(currentFlow.nodes, currentFlow.links);
       model.nodeKeyProperty = "key";
       model.linkFromKeyProperty = "from";
       model.linkToKeyProperty = "to";
-      myDiagramRef.current.model = model;
-    }else{
+      diagram.model = model;
+    } else {
       setSaveFormData({ flowName: "", flowDescription: "" });
     }
   }, [id]);
 
-  // Node Handlers
-  const handleEditNode = useCallback((node) => {
-    setEditingNode(node);
-    setFormData({
-      name: node.data.text || "",
-      description: node.data.description || "",
-    });
-  }, []);
-
+  //  Update Node
   const handleUpdateNode = (e) => {
     e.preventDefault();
     const diagram = myDiagramRef.current;
@@ -228,19 +335,6 @@ const Diagram = () => {
     diagram.model.setDataProperty(editingNode.data, "description", formData.description);
     diagram.commitTransaction("updateNode");
     setEditingNode(null);
-  };
-
-  const handleDeleteNode = useCallback((node) => {
-    const diagram = myDiagramRef.current;
-    diagram.startTransaction("deleteNode");
-    diagram.remove(node);
-    diagram.commitTransaction("deleteNode");
-  }, []);
-
-  //  Link Handlers
-  const handleLinkClick = (data) => {
-    setEditingLink(data);
-    setLinkFormData({ ...linkFormData, ...data });
   };
 
   //  Save/Update Flow
@@ -267,6 +361,7 @@ const Diagram = () => {
     navigate("/flows");
   };
 
+
   return (
     <div className="container">
       <Sidebar onSave={() => setShowSaveForm(true)} id={id} />
@@ -278,9 +373,11 @@ const Diagram = () => {
           <h3>Edit Node</h3>
           <form onSubmit={handleUpdateNode}>
             <label>Name:</label>
-            <input type="text" value={formData.name} onChange={(e) => setFormData({ ...formData, name: e.target.value })} />
+            <input type="text" value={formData.name}
+              onChange={(e) => setFormData({ ...formData, name: e.target.value })} />
             <label>Description:</label>
-            <textarea value={formData.description} onChange={(e) => setFormData({ ...formData, description: e.target.value })} />
+            <textarea value={formData.description}
+              onChange={(e) => setFormData({ ...formData, description: e.target.value })} />
             <button type="submit">Update</button>
             <button type="button" onClick={() => setEditingNode(null)}>Cancel</button>
           </form>
@@ -293,9 +390,15 @@ const Diagram = () => {
           <h3>{id ? "Update Flow" : "Save Flow"}</h3>
           <form onSubmit={handleSubmitSaveForm}>
             <label>Flow Name:</label>
-            <input type="text" value={saveFormData.flowName} onChange={(e) => setSaveFormData({ ...saveFormData, flowName: e.target.value })} required />
+            <input type="text"
+              value={saveFormData.flowName}
+              onChange={(e) => setSaveFormData({ ...saveFormData, flowName: e.target.value })}
+              required />
             <label>Flow Description:</label>
-            <textarea value={saveFormData.flowDescription} onChange={(e) => setSaveFormData({ ...saveFormData, flowDescription: e.target.value })} required />
+            <textarea
+              value={saveFormData.flowDescription}
+              onChange={(e) => setSaveFormData({ ...saveFormData, flowDescription: e.target.value })}
+              required />
             <button type="submit">{id ? "Update" : "Save"}</button>
             <button type="button" onClick={() => setShowSaveForm(false)}>Cancel</button>
           </form>
@@ -320,41 +423,63 @@ const Diagram = () => {
               }}
             >
               <div className="form-row">
-              <label>Routing:</label>
-              <select value={linkFormData.routing} onChange={(e) => setLinkFormData({ ...linkFormData, routing: e.target.value })}>
-                <option value="Normal">Normal</option>
-                <option value="Orthogonal">Orthogonal</option>
-                <option value="AvoidsNodes">Avoids Nodes</option>
-              </select>
+                <label>Routing:</label>
+                <select
+                  value={linkFormData.routing}
+                  onChange={(e) => setLinkFormData({ ...linkFormData, routing: e.target.value })}
+                >
+                  <option value="Normal">Normal</option>
+                  <option value="Orthogonal">Orthogonal</option>
+                  <option value="AvoidsNodes">Avoids Nodes</option>
+                </select>
               </div>
 
-              <div className="form-row"> 
-              <label>Curve:</label>
-              <select value={linkFormData.curve} onChange={(e) => setLinkFormData({ ...linkFormData, curve: e.target.value })}>
-                <option value="None">None</option>
-                <option value="Bezier">Bezier</option>
-                <option value="JumpOver">Jump Over</option>
-              </select>
-              </div>
               <div className="form-row">
-              <label>Arrow Style:</label>
-              <select value={linkFormData.arrow} onChange={(e) => setLinkFormData({ ...linkFormData, arrow: e.target.value })}>
-                <option value="Standard">Standard</option>
-                <option value="Triangle">Triangle</option>
-                <option value="Circle">Circle</option>
-                <option value="DoubleTriangle">Double Triangle</option>
-                <option value="Backward">Backward</option>
-                <option value="OpenTriangle">Open Triangle</option>
-              </select>
+                <label>Curve:</label>
+                <select
+                  value={linkFormData.curve}
+                  onChange={(e) => setLinkFormData({ ...linkFormData, curve: e.target.value })}
+                >
+                  <option value="None">None</option>
+                  <option value="Bezier">Bezier</option>
+                  <option value="JumpOver">Jump Over</option>
+                </select>
               </div>
+
               <div className="form-row">
-              <label>Color:</label>
-              <input type="color" value={linkFormData.color} onChange={(e) => setLinkFormData({ ...linkFormData, color: e.target.value })} />
+                <label>Arrow Style:</label>
+                <select
+                  value={linkFormData.arrow}
+                  onChange={(e) => setLinkFormData({ ...linkFormData, arrow: e.target.value })}
+                >
+                  <option value="Standard">Standard</option>
+                  <option value="Triangle">Triangle</option>
+                  <option value="Circle">Circle</option>
+                  <option value="DoubleTriangle">Double Triangle</option>
+                  <option value="Backward">Backward</option>
+                  <option value="OpenTriangle">Open Triangle</option>
+                </select>
               </div>
+
               <div className="form-row">
-              <label>Label:</label>
-              <input type="text" placeholder="Enter link label" value={linkFormData.label} onChange={(e) => setLinkFormData({ ...linkFormData, label: e.target.value })} />
+                <label>Color:</label>
+                <input
+                  type="color"
+                  value={linkFormData.color}
+                  onChange={(e) => setLinkFormData({ ...linkFormData, color: e.target.value })}
+                />
               </div>
+
+              <div className="form-row">
+                <label>Label:</label>
+                <input
+                  type="text"
+                  placeholder="Enter link label"
+                  value={linkFormData.label}
+                  onChange={(e) => setLinkFormData({ ...linkFormData, label: e.target.value })}
+                />
+              </div>
+
               <div className="button-row">
                 <button type="submit" className="btn save">Save</button>
                 <button type="button" className="btn cancel" onClick={() => setEditingLink(null)}>Cancel</button>
