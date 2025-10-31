@@ -78,7 +78,6 @@ const Diagram = () => {
   setEditingLink(data);
 }, []);
 
-
   //  Diagram initialization
   useEffect(() => {
     const $ = go.GraphObject.make;
@@ -124,7 +123,7 @@ const Diagram = () => {
           sel.each((part) => {
             if (part instanceof go.Node && !part.data.isGroup) {
               grp.diagram.model.setDataProperty(part.data, "group", grp.data.key);
-              console.log(`📦 ${part.data.text} → ${grp.data.text}`);
+              console.log(`${part.data.text} : ${grp.data.text}`);
             }
           });
           grp.diagram.commitTransaction("addToGroup");
@@ -159,6 +158,17 @@ const Diagram = () => {
           font: "bold 13px sans-serif",
           editable: true,
         }, new go.Binding("text").makeTwoWay()),
+         $(go.TextBlock,
+        {
+          margin: new go.Margin(0, 0, 6, 0),
+          font: "11px sans-serif",
+          stroke: "#555",
+          editable: true,
+          wrap: go.TextBlock.WrapFit,
+          width: 120, 
+        },
+    new go.Binding("text", "description").makeTwoWay()
+  ),
         $(go.Placeholder, { padding: 10 })
       )
     );
@@ -181,7 +191,20 @@ const Diagram = () => {
         ),
         $("Button", { click: (_, obj) => handleDeleteNode(obj.part.adornedPart) },
           $(go.TextBlock, "🗑", { margin: 4, font: "14px sans-serif" })
-        )
+        ),
+        $("Button",
+          {click:(_,obj)=>{
+          const groupPart = obj.part.adornedPart;
+          const diagram = groupPart.diagram;
+          diagram.startTransaction("ungroup");
+          groupPart.memberParts.each(part => {
+            diagram.model.setDataProperty(part.data, "group", null);
+          });
+          diagram.remove(groupPart);
+          diagram.commitTransaction("ungroup");
+        }},
+      $(go.TextBlock, "Ungroup",{margin:4,font:"14px sans-serif"})
+    )
       )
     );
 
@@ -226,8 +249,24 @@ const Diagram = () => {
         $("Button", { click: (_, obj) => handleEditNode(obj.part.adornedPart) },
           $(go.TextBlock, "✏️", { margin: 5, font: "20px sans-serif" })),
         $("Button", { click: (_, obj) => handleDeleteNode(obj.part.adornedPart) },
-          $(go.TextBlock, "🗑", { margin: 5, font: "20px sans-serif" }))
+          $(go.TextBlock, "🗑", { margin: 5, font: "20px sans-serif" })),
+          $("Button",
+            {
+            click:(_,obj)=>{
+            const nodePart = obj.part.adornedPart;
+            const diagram = nodePart.diagram;
+            if(!nodePart.containingGroup) {
+              alert("Node is not in any group.");
+              return;
+            }
+            diagram.startTransaction("detachNode");
+            diagram.model.setDataProperty(nodePart.data, "group", null);
+            diagram.commitTransaction("detachNode");
+          },
+        },
+      $(go.TextBlock, "Detach",{margin:5,font:"20px sans-serif"}))
       )
+
     );
 
     // Link Template
