@@ -119,6 +119,8 @@ const Diagram = () => {
 
         mouseDrop: (e, grp) => {
           const sel = grp.diagram.selection;
+          console.log("grp data",grp.data)
+          console.log("Dropped on group:", sel);
           grp.diagram.startTransaction("addToGroup");
           sel.each((part) => {
             if (part instanceof go.Node && !part.data.isGroup) {
@@ -186,22 +188,38 @@ const Diagram = () => {
           background: "rgba(255,255,255,0.9)",
           cursor: "pointer",
         },
-        $("Button", { click: (_, obj) => handleEditNode(obj.part.adornedPart) },
+        $("Button", { 
+          toolTip: $("ToolTip", $(go.TextBlock, "Edit Group")),
+        "ButtonBorder.stroke": null,
+        "_buttonFillOver": "#3399ff",
+        "_buttonFillPressed": "#0066cc",
+          click: (_, obj) => handleEditNode(obj.part.adornedPart) },
           $(go.TextBlock, "✏️", { margin: 4, font: "14px sans-serif" })
         ),
-        $("Button", { click: (_, obj) => handleDeleteNode(obj.part.adornedPart) },
+        $("Button", { 
+              toolTip: $("ToolTip", $(go.TextBlock, "Delete Group")),
+            "ButtonBorder.stroke": null,
+            "_buttonFillOver": "#e35d6a",
+            "_buttonFillPressed": "#c82333",
+              click: (_, obj) => handleDeleteNode(obj.part.adornedPart) },
           $(go.TextBlock, "🗑", { margin: 4, font: "14px sans-serif" })
         ),
         $("Button",
-          {click:(_,obj)=>{
-          const groupPart = obj.part.adornedPart;
-          const diagram = groupPart.diagram;
-          diagram.startTransaction("ungroup");
-          groupPart.memberParts.each(part => {
-            diagram.model.setDataProperty(part.data, "group", null);
-          });
-          diagram.remove(groupPart);
-          diagram.commitTransaction("ungroup");
+          {
+            toolTip: $("ToolTip", $(go.TextBlock, "Ungroup All Nodes")),
+            "ButtonBorder.fill": "#28a745",
+            "ButtonBorder.stroke": null,
+            "_buttonFillOver": "#58d68d",
+            "_buttonFillPressed": "#218838",
+            click:(_,obj)=>{
+            const groupPart = obj.part.adornedPart;
+            const diagram = groupPart.diagram;
+            diagram.startTransaction("ungroup");
+            groupPart.memberParts.each(part => {
+              diagram.model.setDataProperty(part.data, "group", null);
+            });
+            diagram.remove(groupPart);
+            diagram.commitTransaction("ungroup");
         }},
       $(go.TextBlock, "Ungroup",{margin:4,font:"14px sans-serif"})
     )
@@ -246,25 +264,39 @@ const Diagram = () => {
         go.Panel,
         "Horizontal",
         { alignment: go.Spot.TopLeft, alignmentFocus: go.Spot.BottomLeft, background: "rgba(255,255,255,0.9)" },
-        $("Button", { click: (_, obj) => handleEditNode(obj.part.adornedPart) },
+        $("Button", { 
+            toolTip: $("ToolTip", $(go.TextBlock, "Edit Node")),
+            "ButtonBorder.stroke": null,
+            "_buttonFillOver": "#3399ff",
+            "_buttonFillPressed": "#0066cc",
+              click: (_, obj) => handleEditNode(obj.part.adornedPart) },
           $(go.TextBlock, "✏️", { margin: 5, font: "20px sans-serif" })),
-        $("Button", { click: (_, obj) => handleDeleteNode(obj.part.adornedPart) },
+        $("Button", { 
+            toolTip: $("ToolTip", $(go.TextBlock, "Delete Node")),
+            "ButtonBorder.stroke": null,
+            "_buttonFillOver": "#e35d6a",
+            "_buttonFillPressed": "#c82333",
+          click: (_, obj) => handleDeleteNode(obj.part.adornedPart) },
           $(go.TextBlock, "🗑", { margin: 5, font: "20px sans-serif" })),
           $("Button",
             {
-            click:(_,obj)=>{
-            const nodePart = obj.part.adornedPart;
-            const diagram = nodePart.diagram;
-            if(!nodePart.containingGroup) {
-              alert("Node is not in any group.");
-              return;
-            }
+              toolTip: $("ToolTip", $(go.TextBlock, "Detach from Group")),
+              "ButtonBorder.stroke": null,
+              "_buttonFillOver": "#ffd54f",
+              "_buttonFillPressed": "#e0a800",
+              click:(_,obj)=>{
+              const nodePart = obj.part.adornedPart;
+              const diagram = nodePart.diagram;
+              if(!nodePart.containingGroup) {
+                alert("Node is not in any group.");
+                return;
+              }
             diagram.startTransaction("detachNode");
             diagram.model.setDataProperty(nodePart.data, "group", null);
             diagram.commitTransaction("detachNode");
           },
         },
-      $(go.TextBlock, "Detach",{margin:5,font:"20px sans-serif"}))
+      $(go.TextBlock, "🔗",{margin:5,font:"20px sans-serif"}))
       )
 
     );
