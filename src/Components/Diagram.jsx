@@ -94,6 +94,23 @@ const Diagram = () => {
 
     myDiagramRef.current = diagram;
 
+    const toggleGroupCollapse = (group, collapse)=>{
+      diagram.startTransaction("toggleCollapse");
+      group.memberParts.each((part)=>{
+        if(part instanceof go.Node || part instanceof go.Link){
+          part.visible = !collapse;
+        }
+      });
+      group.data.isCollapsed = collapse;
+      diagram.model.updateTargetBindings(group.data);
+
+      // diagram.links.each(link=>{
+      //   const fromNode = link.fromNode;
+      //   const toNode = link.toNode;
+      // })
+      diagram.commitTransaction("toggleCollapse");
+    }
+
     // Background grid
     diagram.background = "#ffffff";
     diagram.grid = $(
@@ -116,7 +133,10 @@ const Diagram = () => {
         ungroupable: true,
         computesBoundsAfterDrag: true,
         handlesDragDropForMembers: true,
-
+        resizable: true,                        //
+        resizeObjectName: "SHAPE",
+        minSize: new go.Size(120, 100),       //
+         
         mouseDrop: (e, grp) => {
           const sel = grp.diagram.selection;
           console.log("grp data",grp.data)
@@ -171,8 +191,27 @@ const Diagram = () => {
         },
     new go.Binding("text", "description").makeTwoWay()
   ),
+  $(go.TextBlock,
+    {
+      name:"COUNT_TEXT",
+      visible:false,
+      font:"12px sans-serif",
+      stroke:"#555",
+      alignment:go.Spot.Center,
+    },
+    new go.Binding("visible","isCollapsed"),
+    new go.Binding("text","",(d,obj)=>{
+      const group = obj.part;
+      if(group instanceof go.Group){
+        const nodes = group.memberParts.filter(p=>p instanceof go.Node).count;
+        const links = group.memberParts.filter(p=> p instanceof go.Link).count;
+        return `Nodes:${nodes} | Links: ${links}`;
+      }
+      return "";
+    })
+  ),
         $(go.Placeholder, { padding: 10 })
-      )
+      ),
     );
 
     //  Group Adornment (Toolbar)
@@ -204,6 +243,29 @@ const Diagram = () => {
               click: (_, obj) => handleDeleteNode(obj.part.adornedPart) },
           $(go.TextBlock, "🗑", { margin: 4, font: "14px sans-serif" })
         ),
+         $("Button",
+      {
+        toolTip: $("ToolTip", $(go.TextBlock, "Collapse / Expand")),
+        "ButtonBorder.stroke": null,
+        "_buttonFillOver": "#ffd54f",
+        "_buttonFillPressed": "#e0a800",
+        click: (_, obj) => {
+          const group = obj.part.adornedPart;
+          if (group instanceof go.Group) {
+            const collapse = !group.data.isCollapsed;
+            toggleGroupCollapse(group, collapse);
+          }
+        },
+      },
+      $(go.TextBlock,
+        {
+          margin: 4,
+          font: "14px sans-serif",
+        },
+        new go.Binding("text", "", d => (d.isCollapsed ? "🔼" : "🔽"))
+      )
+    ),
+
         $("Button",
           {
             toolTip: $("ToolTip", $(go.TextBlock, "Ungroup All Nodes")),
