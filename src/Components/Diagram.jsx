@@ -9,6 +9,7 @@ const Diagram = () => {
   const myDiagramRef = useRef(null);
   const { id } = useParams();
   const navigate = useNavigate();
+  
 
   const [editingNode, setEditingNode] = useState(null);
   const [formData, setFormData] = useState({ name: "", description: "" });
@@ -18,7 +19,7 @@ const Diagram = () => {
   const [linkFormData, setLinkFormData] = useState({
     routing: "Normal",
     curve: "None",
-    dashed: false,
+    // dashed: false,
     animated: true,
     color: "#4CAF50",
     label: "",
@@ -69,7 +70,7 @@ const Diagram = () => {
   setLinkFormData({
     routing: data.routing || "Normal",
     curve: data.curve || "None",
-    dashed: data.dashed || false,
+    // dashed: data.dashed || false,
     animated: data.animated ?? true,
     color: data.color || "#4CAF50",
     label: data.label || "",
@@ -94,22 +95,24 @@ const Diagram = () => {
 
     myDiagramRef.current = diagram;
 
-    const toggleGroupCollapse = (group, collapse)=>{
+     const toggleGroupCollapse = (group, collapse) => {
+      if (!group) return;
       diagram.startTransaction("toggleCollapse");
-      group.memberParts.each((part)=>{
-        if(part instanceof go.Node || part instanceof go.Link){
-          part.visible = !collapse;
-        }
-      });
-      group.data.isCollapsed = collapse;
-      diagram.model.updateTargetBindings(group.data);
+      diagram.model.setDataProperty(group.data, "isCollapsed", collapse);
 
-      // diagram.links.each(link=>{
-      //   const fromNode = link.fromNode;
-      //   const toNode = link.toNode;
-      // })
+      if (collapse) {
+        group.memberParts.each((part) => {
+          if (part instanceof go.Node || part instanceof go.Link) part.visible = false;
+        });
+      } else {
+        group.memberParts.each((part) => {
+          if (part instanceof go.Node || part instanceof go.Link) part.visible = true;
+        });
+      }
+
+      diagram.model.updateTargetBindings(group.data);
       diagram.commitTransaction("toggleCollapse");
-    }
+    };
 
     // Background grid
     diagram.background = "#ffffff";
@@ -133,11 +136,12 @@ const Diagram = () => {
         ungroupable: true,
         computesBoundsAfterDrag: true,
         handlesDragDropForMembers: true,
-        resizable: true,                        //
+        resizable: true,                        
         resizeObjectName: "SHAPE",
-        minSize: new go.Size(120, 100),       //
+        minSize: new go.Size(120, 100),       
          
         mouseDrop: (e, grp) => {
+          if (grp.data.isCollapsed) return;
           const sel = grp.diagram.selection;
           console.log("grp data",grp.data)
           console.log("Dropped on group:", sel);
@@ -152,6 +156,7 @@ const Diagram = () => {
         },
 
         mouseDragEnter: (_, grp) => {
+          if(grp.data.isCollapsed) return;
           grp.isHighlighted = true;
           const shape = grp.findObject("SHAPE");
           if (shape) shape.stroke = "#0078D7";
@@ -191,6 +196,7 @@ const Diagram = () => {
         },
     new go.Binding("text", "description").makeTwoWay()
   ),
+  // Count text block
   $(go.TextBlock,
     {
       name:"COUNT_TEXT",
@@ -210,9 +216,11 @@ const Diagram = () => {
       return "";
     })
   ),
-        $(go.Placeholder, { padding: 10 })
+        $(go.Placeholder, { padding: 10},
+          new go.Binding("visible", "isCollapsed", (v) => !v)
       ),
-    );
+    )
+  );
 
     //  Group Adornment (Toolbar)
     diagram.groupTemplate.selectionAdornmentTemplate = $(
@@ -368,7 +376,7 @@ const Diagram = () => {
       go.Link,
       {
         routing: go.Routing.Normal,
-        curve: go.Curve.None,
+        curve: go.Curve.JumpOver,
         corner: 10,
         relinkableFrom: true,
         relinkableTo: true,
@@ -380,7 +388,7 @@ const Diagram = () => {
       },
       new go.Binding("routing", "routing", (r) => go.Routing[r] || go.Routing.Normal),
       new go.Binding("curve", "curve", (c) => go.Curve[c] || go.Curve.None),
-      new go.Binding("strokeDashArray", "dashed", (d) => (d ? [6, 4] : null)),
+      new go.Binding("strokeDashArray", "isDashed", (d) => (d ? [6, 4] : null)),
       new go.Binding("isAnimated", "animated"),
       $(go.Shape, { strokeWidth: 2 }, new go.Binding("stroke", "color")),
       $(go.Shape, { toArrow: "Standard" }, new go.Binding("toArrow", "arrow"), new go.Binding("fill", "color")),
@@ -394,6 +402,13 @@ const Diagram = () => {
     model.linkFromKeyProperty = "from";
     model.linkToKeyProperty = "to";
     diagram.model = model;
+    
+    diagram.addDiagramListener("InitialLayoutCompleted", () => {
+      diagram.findTopLevelGroups().each((grp) => {
+        if (grp.data.isCollapsed) toggleGroupCollapse(grp, true);
+      });
+    });
+
 
     // Handle drag/drop
     const div = diagram.div;
