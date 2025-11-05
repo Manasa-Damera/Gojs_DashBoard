@@ -94,25 +94,50 @@ const Diagram = () => {
     });
 
     myDiagramRef.current = diagram;
+    // 🔹 Updated toggleGroupCollapse
+    const toggleGroupCollapse = (group, collapse) => {
+    if (!group) return;
+    diagram.startTransaction("toggleCollapse");
+    diagram.model.setDataProperty(group.data, "isCollapsed", collapse);
 
-     const toggleGroupCollapse = (group, collapse) => {
-      if (!group) return;
-      diagram.startTransaction("toggleCollapse");
-      diagram.model.setDataProperty(group.data, "isCollapsed", collapse);
+    if (collapse) {
+    // 🟩 Hide all child nodes and links
+    group.memberParts.each((part) => {
+      if (part instanceof go.Node || part instanceof go.Link) part.visible = false;
+    });
 
-      if (collapse) {
-        group.memberParts.each((part) => {
-          if (part instanceof go.Node || part instanceof go.Link) part.visible = false;
-        });
-      } else {
-        group.memberParts.each((part) => {
-          if (part instanceof go.Node || part instanceof go.Link) part.visible = true;
-        });
-      }
+    // 🟩 Automatically resize the group smaller when collapsed
+    const shape = group.findObject("SHAPE");
+    if (shape) {
+      shape.desiredSize = new go.Size(120, 100); // collapsed size
+    }
 
-      diagram.model.updateTargetBindings(group.data);
-      diagram.commitTransaction("toggleCollapse");
-    };
+    // 🟩 Optional: adjust placeholder visibility
+    const placeholder = group.findObject("PLACEHOLDER");
+    if (placeholder) placeholder.visible = false;
+
+  } else {
+    // 🟩 Expand back to fit contents
+    group.memberParts.each((part) => {
+      if (part instanceof go.Node || part instanceof go.Link) part.visible = true;
+    });
+
+    const shape = group.findObject("SHAPE");
+    if (shape) {
+      shape.desiredSize = new go.Size(NaN, NaN); // auto-fit again
+    }
+
+    const placeholder = group.findObject("PLACEHOLDER");
+    if (placeholder) placeholder.visible = true;
+  }
+
+  // 🟩 Update binding so count text updates correctly
+  diagram.model.updateTargetBindings(group.data);
+  group.location = group.location.copy();
+
+  diagram.commitTransaction("toggleCollapse");
+};
+
 
     // Background grid
     diagram.background = "#ffffff";
@@ -216,9 +241,11 @@ const Diagram = () => {
       return "";
     })
   ),
-        $(go.Placeholder, { padding: 10},
-          new go.Binding("visible", "isCollapsed", (v) => !v)
-      ),
+      $(go.Placeholder,
+  { name: "PLACEHOLDER", padding: 10 },
+  new go.Binding("visible", "isCollapsed", (v) => !v)
+),
+
     )
   );
 

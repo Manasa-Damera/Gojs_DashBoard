@@ -10,6 +10,7 @@ const nodeTypes = [
 
 const Sidebar = ({onSave,id}) => {
   const handleDragStart = (e, nodeData) => {
+    // console.log("nodeData", nodeData);
     e.dataTransfer.setData("application/my-node", JSON.stringify(nodeData));
     e.dataTransfer.effectAllowed = "copy";
   };
