@@ -94,30 +94,30 @@ const Diagram = () => {
     });
 
     myDiagramRef.current = diagram;
-    // 🔹 Updated toggleGroupCollapse
+    //  Updated toggleGroupCollapse
     const toggleGroupCollapse = (group, collapse) => {
     if (!group) return;
     diagram.startTransaction("toggleCollapse");
     diagram.model.setDataProperty(group.data, "isCollapsed", collapse);
 
     if (collapse) {
-    // 🟩 Hide all child nodes and links
+    //  Hide all child nodes and links
     group.memberParts.each((part) => {
       if (part instanceof go.Node || part instanceof go.Link) part.visible = false;
     });
 
-    // 🟩 Automatically resize the group smaller when collapsed
+    //  Automatically resize the group smaller when collapsed
     const shape = group.findObject("SHAPE");
     if (shape) {
       shape.desiredSize = new go.Size(120, 100); // collapsed size
     }
 
-    // 🟩 Optional: adjust placeholder visibility
+    //  Optional: adjust placeholder visibility
     const placeholder = group.findObject("PLACEHOLDER");
     if (placeholder) placeholder.visible = false;
 
   } else {
-    // 🟩 Expand back to fit contents
+    //  Expand back to fit contents
     group.memberParts.each((part) => {
       if (part instanceof go.Node || part instanceof go.Link) part.visible = true;
     });
@@ -131,8 +131,9 @@ const Diagram = () => {
     if (placeholder) placeholder.visible = true;
   }
 
-  // 🟩 Update binding so count text updates correctly
-  diagram.model.updateTargetBindings(group.data);
+  //  Update binding so count text updates correctly
+  diagram.model.updateTargetBindings(group.data); // safe count show in collapsed state
+  //  Maintain group location
   group.location = group.location.copy();
 
   diagram.commitTransaction("toggleCollapse");
@@ -202,13 +203,18 @@ const Diagram = () => {
         parameter1: 10,
       }),
       $(
-        go.Panel,
-        "Vertical",
+        go.Panel,"Vertical",
+        {
+          alignment: go.Spot.Top,   // stays pinned at top
+          alignmentFocus: go.Spot.Top,
+          stretch: go.GraphObject.None,
+        },
         { margin: 10 },
         $(go.TextBlock, {
-          margin: new go.Margin(6, 0, 4, 0),
+          margin: new go.Margin(6, 0, 2, 0),
           font: "bold 13px sans-serif",
           editable: true,
+          textAlign: "center",
         }, new go.Binding("text").makeTwoWay()),
          $(go.TextBlock,
         {
@@ -241,11 +247,18 @@ const Diagram = () => {
       return "";
     })
   ),
-      $(go.Placeholder,
-  { name: "PLACEHOLDER", padding: 10 },
-  new go.Binding("visible", "isCollapsed", (v) => !v)
-),
+//       $(go.Placeholder,
+//   { name: "PLACEHOLDER", padding: 10 },
+//   new go.Binding("visible", "isCollapsed", (v) => !v)
+// ),
 
+ $(go.Placeholder, {
+    name: "PLACEHOLDER",
+    alignment: go.Spot.Top,
+    alignmentFocus: new go.Spot(0.5, 0, 0, 50), // pushes children below title area
+    padding: 10,
+  },
+  new go.Binding("visible", "isCollapsed", (v) => !v)),
     )
   );
 
@@ -325,9 +338,34 @@ const Diagram = () => {
 
     // Node Template
     diagram.nodeTemplate = $(
-      go.Node,
-      "Spot",
-      { locationSpot: go.Spot.Center },
+      go.Node,"Spot",
+      { locationSpot: go.Spot.Center ,
+      // ✅ Restrict dragging inside group bounds
+        dragComputation: (part, newLoc) => {
+        const group = part.containingGroup;
+        if (!group) return newLoc; // if not in a group, no restriction
+
+        const grpBounds = group.actualBounds;
+        const nodeBounds = part.actualBounds;
+        const margin = 10; // optional padding inside group
+
+        let x = newLoc.x;
+        let y = newLoc.y;
+
+        // Horizontal restriction
+        if (x < grpBounds.x + margin) x = grpBounds.x + margin;
+        if (x + nodeBounds.width > grpBounds.right - margin)
+          x = grpBounds.right - nodeBounds.width - margin;
+
+        // Vertical restriction
+        if (y < grpBounds.y + margin) y = grpBounds.y + margin;
+        if (y + nodeBounds.height > grpBounds.bottom - margin)
+          y = grpBounds.bottom - nodeBounds.height - margin;
+
+        return new go.Point(x, y);
+      },
+    },
+
       new go.Binding("location", "loc", go.Point.parse).makeTwoWay(go.Point.stringify),
       $(
         go.Panel,
