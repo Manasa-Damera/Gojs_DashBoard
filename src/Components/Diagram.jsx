@@ -217,8 +217,6 @@ const Diagram = () => {
       return "";
     })
   ),
-
-
         $(go.Placeholder, {
           name: "PLACEHOLDER",
           padding: new go.Margin(20, 20, 50, 20),
