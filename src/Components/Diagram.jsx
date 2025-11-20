@@ -18,22 +18,23 @@ const Diagram = () => {
   const [linkFormData, setLinkFormData] = useState({
     routing: "Normal",
     curve: "None",
-    dashed: false,
+    animated: true,
     color: "#4CAF50",
     label: "",
     arrow: "Standard",
   });
 
+
+  // Port creation
   const makePort = useCallback((name, spot, output, input) => {
     const $ = go.GraphObject.make;
     return $(
       go.Shape,
       "Circle",
       {
-        width: 10,
-        height: 10,
         fill: "transparent",
         stroke: null,
+        desiredSize: new go.Size(8, 8),
         alignment: spot,
         alignmentFocus: spot,
         portId: name,
@@ -42,98 +43,41 @@ const Diagram = () => {
         fromLinkable: output,
         toLinkable: input,
         cursor: "pointer",
-        mouseEnter: (_, obj) => (obj.fill = "rgba(0,0,0,0.25)"),
-        mouseLeave: (_, obj) => (obj.fill = "transparent"),
+        mouseEnter: (_, port) => (port.fill = "rgba(0,0,0,.3)"),
+        mouseLeave: (_, port) => (port.fill = "transparent"),
       }
     );
   }, []);
 
-  // PERFECT collapse/expand with originalSize saving
-  const toggleGroupCollapse = useCallback((group, collapse) => {
-    if (!group) return;
-
-    const diagram = group.diagram;
-    diagram.startTransaction("toggleCollapse");
-
-    const shape = group.findObject("SHAPE");
-    const placeholder = group.findObject("PLACEHOLDER");
-
-    if (collapse) {
-      // Save current natural size
-      const naturalSize = group.actualBounds.size;
-      diagram.model.setDataProperty(group.data, "originalSize", go.Size.stringify(naturalSize));
-
-      // Hide members
-      group.memberParts.each(part => {
-        if (part instanceof go.Node || part instanceof go.Link) {
-          part.visible = false;
-        }
-      });
-
-      // Apply collapsed size
-      if (shape) {
-        shape.width = 240;
-        shape.height = 140;
-      }
-      if (placeholder) placeholder.visible = false;
-
-    } else {
-      // EXPANDING — smooth restore
-      const saved = group.data.originalSize;
-      const restoreSize = saved ? go.Size.parse(saved) : new go.Size(400, 300);
-
-      // Step 1: Restore original size first (prevents jump/flicker)
-      if (shape) {
-        shape.width = restoreSize.width;
-        shape.height = restoreSize.height;
-      }
-
-      // Step 2: Show members
-      group.memberParts.each(part => {
-        if (part instanceof go.Node || part instanceof go.Link) {
-          part.visible = true;
-        }
-      });
-      if (placeholder) placeholder.visible = true;
-
-      // Step 3: After next render, release to auto-size
-      setTimeout(() => {
-        if (shape && group.diagram) {
-          shape.width = NaN;
-          shape.height = NaN;
-          group.diagram.layoutDiagram(true);
-        }
-      }, 0);
-    }
-
-    diagram.model.setDataProperty(group.data, "isCollapsed", collapse);
-    diagram.commitTransaction("toggleCollapse");
-  }, []);
-
+  // Node editing
   const handleEditNode = useCallback((node) => {
     setEditingNode(node);
-    setFormData({
-      name: node.data.text || "",
-      description: node.data.description || "",
-    });
+    setFormData({ name: node.data.text || "", description: node.data.description || "" });
   }, []);
 
+  // Node deletion
   const handleDeleteNode = useCallback((node) => {
-    myDiagramRef.current?.remove(node);
+    const diagram = myDiagramRef.current;
+    if (!diagram || !node) return;
+    diagram.startTransaction("deleteNode");
+    diagram.remove(node);
+    diagram.commitTransaction("deleteNode");
   }, []);
 
-  const handleLinkClick = useCallback((linkData) => {
+  // Link editing
+  const handleLinkClick = useCallback((data) => {
     setLinkFormData({
-      routing: linkData.routing || "Normal",
-      curve: linkData.curve || "None",
-      dashed: !!linkData.dashed,
-      color: linkData.color || "#4CAF50",
-      label: linkData.label || "",
-      arrow: linkData.arrow || "Standard",
+      routing: data.routing || "Normal",
+      curve: data.curve || "None",
+      animated: data.animated ?? true,
+      color: data.color || "#4CAF50",
+      label: data.label || "",
+      arrow: data.arrow || "Standard",
     });
-    setEditingLink(linkData);
+    setEditingLink(data);
   }, []);
 
+  // Diagram initialization
   useEffect(() => {
     const $ = go.GraphObject.make;
     const diagram = $(go.Diagram, diagramRef.current, {
@@ -141,285 +85,464 @@ const Diagram = () => {
       allowDrop: true,
       initialContentAlignment: go.Spot.TopLeft,
       "animationManager.isEnabled": false,
-      padding: 30,
+      "linkingTool.isEnabled": true,
+      "linkReshapingTool.isEnabled": true,
+      "relinkingTool.isEnabled": true,
+      "resizingTool.isEnabled": true,
+      padding: 10,
+    });
+      // Configure custom resizing tool for groups
+  diagram.toolManager.resizingTool = $(
+    go.ResizingTool,
+    {
+      computeMinSize: function() {
+        const adornee = this.adornedObject.part;
+        
+        // For groups, calculate minimum size based on child nodes
+        if (adornee instanceof go.Group) {
+          return computeGroupMinSize(adornee);
+        }
+        
+        // For regular nodes, use default minimum
+        return new go.Size(40, 40);
+      }
+    }
+  );
+
+  // Function to compute minimum size for groups based on child nodes
+  const computeGroupMinSize = (group) => {
+    if (!group || group.data.isCollapsed) {
+      return new go.Size(200, 100); // Minimum size for collapsed groups
+    }
+
+    let minX = Infinity;
+    let minY = Infinity;
+    let maxX = -Infinity;
+    let maxY = -Infinity;
+
+    let hasChildren = false;
+
+    // Calculate bounds of all child nodes
+    group.memberParts.each((part) => {
+      if (part instanceof go.Node && part.containingGroup === group) {
+        hasChildren = true;
+        const bounds = part.actualBounds;
+        minX = Math.min(minX, bounds.x);
+        minY = Math.min(minY, bounds.y);
+        maxX = Math.max(maxX, bounds.x + bounds.width);
+        maxY = Math.max(maxY, bounds.y + bounds.height);
+      }
     });
 
+    // If no children, return default minimum size
+    if (!hasChildren) {
+      return new go.Size(200, 100);
+    }
+
+    // Calculate required size with margins
+    const requiredWidth = maxX - minX;
+    const requiredHeight = maxY - minY;
+    const margin = 40; // Extra margin around children
+
+    return new go.Size(
+      Math.max(200, requiredWidth + margin),
+      Math.max(100, requiredHeight + margin)
+    );
+  };
+    // Save reference
     myDiagramRef.current = diagram;
 
+    // Group collapse/expand logic
+    const toggleGroupCollapse = (group, collapse) => {
+      if (!group) return;
+      diagram.startTransaction("toggleCollapse");
+      diagram.model.setDataProperty(group.data, "isCollapsed", collapse);
+
+      if (collapse) {
+        group.memberParts.each((part) => {
+          if (part instanceof go.Node || part instanceof go.Link) part.visible = false;
+        });
+        const shape = group.findObject("SHAPE");
+        if (shape) {
+          group._savedExpandedSize = shape.desiredSize.copy();
+          shape.desiredSize = new go.Size(200, 100);
+          console.log("Collapsed data", group.data);
+        }
+        const placeholder = group.findObject("PLACEHOLDER");
+        if (placeholder) placeholder.visible = false;
+      } else {
+        group.memberParts.each((part) => {
+          if (part instanceof go.Node || part instanceof go.Link) part.visible = true;
+        });
+        const shape = group.findObject("SHAPE");
+        if (shape) {
+          if (group._savedExpandedSize) shape.desiredSize = group._savedExpandedSize.copy();
+          else shape.desiredSize = new go.Size(NaN, NaN);
+          console.log("Expanded data", group.data);
+        }
+        const placeholder = group.findObject("PLACEHOLDER");
+        if (placeholder) placeholder.visible = true;
+      }
+
+      diagram.model.updateTargetBindings(group.data);
+      group.location = group.location.copy();
+      diagram.commitTransaction("toggleCollapse");
+    };
+
+    // Grid and background
+    diagram.background = "#ffffff";
     diagram.grid = $(
       go.Panel,
       "Grid",
-      $(go.Shape, "LineH", { stroke: "#eaeaea", strokeWidth: 0.5 }),
-      $(go.Shape, "LineV", { stroke: "#eaeaea", strokeWidth: 0.5 })
+      { gridCellSize: new go.Size(40, 40) },
+      $(go.Shape, "LineH", { stroke: "#ccc", strokeWidth: 1 }),
+      $(go.Shape, "LineV", { stroke: "#ccc", strokeWidth: 1 })
     );
 
-    // GROUP TEMPLATE — Final perfect version
+    diagram.toolManager.draggingTool.isGridSnapEnabled = true;
+    diagram.toolManager.draggingTool.gridSnapCellSize = new go.Size(40, 40);
+
+    // Group template
     diagram.groupTemplate = $(
       go.Group,
       "Auto",
       {
-        resizable: true,
-        resizeObjectName: "SHAPE",
+        background: "transparent",
         ungroupable: true,
         computesBoundsAfterDrag: true,
         handlesDragDropForMembers: true,
+        resizable: true,
+        resizeObjectName: "SHAPE",
+        minSize: new go.Size(200, 100),
+        // Add nodes to group on drop
         mouseDrop: (e, grp) => {
           if (grp.data.isCollapsed) return;
-          grp.diagram.selection.each(part => {
+          const sel = grp.diagram.selection;
+          grp.diagram.startTransaction("addToGroup");
+          sel.each((part) => {
             if (part instanceof go.Node && !part.data.isGroup) {
               grp.diagram.model.setDataProperty(part.data, "group", grp.data.key);
             }
           });
+          grp.diagram.commitTransaction("addToGroup");
         },
-      },
-      new go.Binding("location", "loc", go.Point.parse).makeTwoWay(go.Point.stringify),
-      new go.Binding("isCollapsed").makeTwoWay(),
-
-      $(go.Shape, "RoundedRectangle", {
-        name: "SHAPE",
-        fill: "rgba(220,240,255,0.25)",
-        stroke: "#4a90e2",
-        strokeWidth: 3,
-        parameter1: 18,
-        width: NaN,
-        height: NaN,
-      }),
-
-      $(go.Panel, "Vertical", { margin: 16 },
-        $(go.TextBlock, {
-          font: "bold 16px sans-serif",
-          editable: true,
-          margin: new go.Margin(0, 0, 10, 0),
-        }, new go.Binding("text").makeTwoWay()),
-
-        $(go.TextBlock, {
-          font: "13px sans-serif",
-          stroke: "#555",
-          editable: true,
-        }, new go.Binding("text", "description").makeTwoWay()),
-
-         $(go.TextBlock,
-    {
-      name:"COUNT_TEXT",
-      visible:false,
-      font:"12px sans-serif",
-      stroke:"#555",
-      alignment:go.Spot.Center,
-    },
-    new go.Binding("visible","isCollapsed"),
-    new go.Binding("text","",(d,obj)=>{
-      const group = obj.part;
-      if(group instanceof go.Group){
-        const nodes = group.memberParts.filter(p=>p instanceof go.Node).count;
-        const links = group.memberParts.filter(p=> p instanceof go.Link).count;
-        return `Nodes:${nodes} | Links: ${links}`;
-      }
-      return "";
-    })
-  ),
-        $(go.Placeholder, {
-          name: "PLACEHOLDER",
-          padding: new go.Margin(20, 20, 50, 20),
+        // Highlight on drag over
+        mouseDragEnter: (_, grp) => {
+          if (grp.data.isCollapsed) return;
+          grp.isHighlighted = true;
+          const shape = grp.findObject("SHAPE");
+          if (shape) shape.stroke = "#0078D7";
         },
-          new go.Binding("visible", "isCollapsed", c => !c)
-        )
-      )
-    );
-
-    // Group toolbar
-    diagram.groupTemplate.selectionAdornmentTemplate = $(
-      go.Adornment, "Spot",
-      $(go.Panel, "Auto", $(go.Shape, { stroke: "#2563eb", strokeWidth: 2, fill: null }), $(go.Placeholder)),
-      $(go.Panel, "Horizontal", {
-        alignment: new go.Spot(0.5, 0, 0, -25),
-        background: "rgba(255,255,255,0.98)",
-        padding: 10,
+        // Remove highlight on drag leave
+        mouseDragLeave: (_, grp) => {
+          grp.isHighlighted = false;
+          const shape = grp.findObject("SHAPE");
+          if (shape) shape.stroke = "#4a90e2";
+        },
+          // resized: (obj, oldSize, newSize) => {
+          // const group = obj.part;
+          // if (!(group instanceof go.Group) || group.data.isCollapsed) return;
+          
+          // Ensure group doesn't become smaller than children
+        //   const minSize = computeGroupMinSize(group);
+        //   if (newSize.width < minSize.width || newSize.height < minSize.height) {
+        //     obj.width = Math.max(newSize.width, minSize.width);
+        //     obj.height = Math.max(newSize.height, minSize.height);
+        //   }
+        // }
       },
-        $("Button", { click: (_, o) => handleEditNode(o.part.adornedPart) },
-          $(go.TextBlock, "✏️", { margin: 8, font: "14px sans-serif" })),
-        $("Button", { click: (_, o) => handleDeleteNode(o.part.adornedPart) },
-          $(go.TextBlock, "🗑", { margin: 8, font: "14px sans-serif" })),
-        $("Button", {
-          click: (_, o) => {
-            const g = o.part.adornedPart;
-            if (g instanceof go.Group) toggleGroupCollapse(g, !g.data.isCollapsed);
-          },
-        }, $(go.TextBlock, { margin: 8, font: "bold 14px sans-serif" },
-          new go.Binding("text", "isCollapsed", c => c ? "🔼" : "🔽")
-        )),
-        $("Button", {
-          click: (_, o) => {
-            const g = o.part.adornedPart;
-            const d = g.diagram;
-            d.startTransaction("ungroup");
-            g.memberParts.each(p => p.data && d.model.setDataProperty(p.data, "group", null));
-            d.remove(g);
-            d.commitTransaction("ungroup");
-          },
-        }, $(go.TextBlock, "Ungroup", { margin: 8, font: "14px sans-serif" }))
-      )
-    );
-
-    // Node & Link templates (unchanged, clean)
-    diagram.nodeTemplate = $(go.Node, "Spot", { locationSpot: go.Spot.Center },
+      
       new go.Binding("location", "loc", go.Point.parse).makeTwoWay(go.Point.stringify),
-      $(go.Panel, "Auto",
-        $(go.Shape, "RoundedRectangle", {
-          fill: "#e0e7ff", stroke: "#4f46e5", strokeWidth: 2, height: 70,
-        }, new go.Binding("figure", "shape"), new go.Binding("fill", "color")),
-        $(go.Panel, "Vertical", { margin: 12 },
-          $(go.TextBlock, { font: "bold 14px sans-serif", editable: true }, new go.Binding("text").makeTwoWay()),
-          $(go.TextBlock, { font: "12px sans-serif", stroke: "#555", editable: true }, new go.Binding("text", "description").makeTwoWay())
-        )
+
+      $(
+        go.Shape,
+        "RoundedRectangle",
+        {
+          name: "SHAPE",
+          fill: "rgba(230,240,255,0.3)",
+          stroke: "#4a90e2",
+          strokeWidth: 2,
+          parameter1: 10,
+        },
+        new go.Binding("desiredSize", "size", go.Size.parse).makeTwoWay(go.Size.stringify)
       ),
-      makePort("L", go.Spot.Left, false, true),
-      makePort("R", go.Spot.Right, true, false)
+
+      $(
+        go.Panel,
+        "Vertical",
+        { alignment: go.Spot.Top, alignmentFocus: go.Spot.Top, stretch: go.GraphObject.None, margin: 10 },
+
+        $(go.TextBlock, { margin: new go.Margin(6, 0, 2, 0), font: "bold 13px sans-serif", editable: true, textAlign: "center" }, new go.Binding("text").makeTwoWay()),
+
+        $(go.TextBlock, { margin: new go.Margin(0, 0, 6, 0), font: "11px sans-serif", stroke: "#555", editable: true, wrap: go.TextBlock.WrapFit, width: 120 }, new go.Binding("text", "description").makeTwoWay()),
+
+        $(go.TextBlock, { name: "COUNT_TEXT", visible: false, font: "12px sans-serif", stroke: "#555", alignment: go.Spot.Center },
+          new go.Binding("visible", "isCollapsed"),
+          new go.Binding("text", "", (_, obj) => {
+            const group = obj.part;
+            if (group instanceof go.Group) {
+              const nodes = group.memberParts.filter(p => p instanceof go.Node).count;
+              const links = group.memberParts.filter(p => p instanceof go.Link).count;
+              return `Nodes: ${nodes} | Links: ${links}`;
+            }
+            return "";
+          })
+        )
+      )
     );
-    
-    diagram.nodeTemplate.selectionAdornmentTemplate = $(
+    // Handle group resize to save size
+    // diagram.addDiagramListener("PartResized", (e) => {
+    //   const part = e.subject.part;
+    //   if (part instanceof go.Group) {
+    //     const shape = part.findObject("SHAPE");
+    //     if (shape) {
+    //       part._savedExpandedSize = shape.desiredSize.copy();
+    //       diagram.model.setDataProperty(part.data, "size", go.Size.stringify(shape.desiredSize));
+    //     }
+    //   }
+    // });
+
+          // Handle group resize to save size and validate constraints
+    diagram.addDiagramListener("PartResized", (e) => {
+      const part = e.subject.part;
+      if (part instanceof go.Group) {
+        const shape = part.findObject("SHAPE");
+        if (shape) {
+          // Validate size against children
+          if (!part.data.isCollapsed) {
+            const minSize = computeGroupMinSize(part);
+            const currentSize = shape.desiredSize;
+            
+            // Ensure group doesn't become smaller than children
+            if (currentSize.width < minSize.width || currentSize.height < minSize.height) {
+              diagram.startTransaction("adjustGroupSize");
+              shape.desiredSize = new go.Size(
+                Math.max(currentSize.width, minSize.width),
+                Math.max(currentSize.height, minSize.height)
+              );
+              diagram.commitTransaction("adjustGroupSize");
+            }
+          }
+          
+          part._savedExpandedSize = shape.desiredSize.copy();
+          diagram.model.setDataProperty(part.data, "size", go.Size.stringify(shape.desiredSize));
+        }
+      }
+    });
+    // Selection adornment for groups
+    diagram.groupTemplate.selectionAdornmentTemplate = $(
       go.Adornment,
       "Spot",
       $(go.Panel, "Auto", $(go.Shape, { fill: null, stroke: "blue", strokeWidth: 1 }), $(go.Placeholder)),
       $(
         go.Panel,
         "Horizontal",
-        { alignment: go.Spot.TopLeft, alignmentFocus: go.Spot.BottomLeft, background: "rgba(255,255,255,0.9)" },
-        $("Button", { 
-            toolTip: $("ToolTip", $(go.TextBlock, "Edit Node")),
-            "ButtonBorder.stroke": null,
-            "_buttonFillOver": "#3399ff",
-            "_buttonFillPressed": "#0066cc",
-              click: (_, obj) => handleEditNode(obj.part.adornedPart) },
-          $(go.TextBlock, "✏️", { margin: 5, font: "20px sans-serif" })),
-        $("Button", { 
-            toolTip: $("ToolTip", $(go.TextBlock, "Delete Node")),
-            "ButtonBorder.stroke": null,
-            "_buttonFillOver": "#e35d6a",
-            "_buttonFillPressed": "#c82333",
-          click: (_, obj) => handleDeleteNode(obj.part.adornedPart) },
-          $(go.TextBlock, "🗑", { margin: 5, font: "20px sans-serif" })),
-          $("Button",
-            {
-              toolTip: $("ToolTip", $(go.TextBlock, "Detach from Group")),
-              "ButtonBorder.stroke": null,
-              "_buttonFillOver": "#ffd54f",
-              "_buttonFillPressed": "#e0a800",
-              click:(_,obj)=>{
-              const nodePart = obj.part.adornedPart;
-              const diagram = nodePart.diagram;
-              if(!nodePart.containingGroup) {
-                alert("Node is not in any group.");
-                return;
-              }
-            diagram.startTransaction("detachNode");
-            diagram.model.setDataProperty(nodePart.data, "group", null);
-            diagram.commitTransaction("detachNode");
-          },
-        },
-      $(go.TextBlock, "🔗",{margin:5,font:"20px sans-serif"}))
+        { alignment: new go.Spot(0, 0, -20, -15), background: "rgba(255,255,255,0.9)", cursor: "pointer" },
+        $("Button", 
+          { toolTip: $("ToolTip", $(go.TextBlock, "Edit Group")), "ButtonBorder.stroke": null, "_buttonFillOver": "#3399ff", "_buttonFillPressed": "#0066cc", 
+            click: (_, obj) => handleEditNode(obj.part.adornedPart) }, 
+            $(go.TextBlock, "✏️", { margin: 4, font: "14px sans-serif" })),
+        $("Button", 
+          { toolTip: $("ToolTip", $(go.TextBlock, "Delete Group")), "ButtonBorder.stroke": null, "_buttonFillOver": "#e35d6a", "_buttonFillPressed": "#c82333", 
+            click: (_, obj) => handleDeleteNode(obj.part.adornedPart) }, 
+            $(go.TextBlock, "🗑", { margin: 4, font: "14px sans-serif" })),
+        $("Button", { toolTip: $("ToolTip", $(go.TextBlock, "Collapse / Expand")), "ButtonBorder.stroke": null, "_buttonFillOver": "#ffd54f", "_buttonFillPressed": "#e0a800", 
+          click: (_, obj) => { const group = obj.part.adornedPart; 
+            if (group instanceof go.Group) toggleGroupCollapse(group, !group.data.isCollapsed); } }, 
+            $(go.TextBlock, { margin: 4, font: "14px sans-serif" }, 
+              new go.Binding("text", "", d => (d.isCollapsed ? "🔼" : "🔽")))),
+        $("Button", { toolTip: $("ToolTip", $(go.TextBlock, "Ungroup All Nodes")), "ButtonBorder.fill": "#28a745", "ButtonBorder.stroke": null, "_buttonFillOver": "#58d68d", "_buttonFillPressed": "#218838", 
+          click: (_, obj) => { const groupPart = obj.part.adornedPart; 
+          const diagram = groupPart.diagram; diagram.startTransaction("ungroup"); 
+          groupPart.memberParts.each(part => { diagram.model.setDataProperty(part.data, "group", null); }); 
+          diagram.remove(groupPart); diagram.commitTransaction("ungroup"); } }, 
+          $(go.TextBlock, "Ungroup", { margin: 4, font: "14px sans-serif" }))
       )
-
     );
 
-    diagram.linkTemplate = $(go.Link, {
-        routing: go.Link.Normal, curve: go.Link.JumpOver, corner: 10,
-        relinkableFrom: true, relinkableTo: true, reshapable: true, resegmentable: true,
-        click: (_, l) => handleLinkClick(l.data),
+    // Node template
+    diagram.nodeTemplate = $(
+      go.Node,
+      "Spot",
+      {
+        locationSpot: go.Spot.Center,
+        // keeps nodes within group bounds
+        dragComputation: (part, newLoc) => {
+          const group = part.containingGroup;
+          if (!group) return newLoc;
+          const grpBounds = group.actualBounds;
+          const nodeBounds = part.actualBounds;
+          const margin = 10;
+          let x = newLoc.x;
+          let y = newLoc.y;
+          if (x < grpBounds.x + margin) x = grpBounds.x + margin;
+          if (x + nodeBounds.width > grpBounds.right - margin) x = grpBounds.right - nodeBounds.width - margin;
+          if (y < grpBounds.y + margin) y = grpBounds.y + margin;
+          if (y + nodeBounds.height > grpBounds.bottom - margin) y = grpBounds.bottom - nodeBounds.height - margin;
+          return new go.Point(x, y);
+        },
       },
-      new go.Binding("routing", "routing", r => r === "Orthogonal" ? go.Link.Orthogonal : r === "AvoidsNodes" ? go.Link.AvoidsNodes : go.Link.Normal),
-      new go.Binding("curve", "curve", c => c === "Bezier" ? go.Link.Bezier : c === "JumpOver" ? go.Link.JumpOver : go.Link.None),
-      new go.Binding("strokeDashArray", "dashed", d => d ? [8, 4] : null),
-      $(go.Shape, { strokeWidth: 3 }, new go.Binding("stroke", "color")),
-      $(go.Shape, { toArrow: "Standard", scale: 1.5 }, new go.Binding("toArrow", "arrow"), new go.Binding("fill", "color"), new go.Binding("stroke", "color")),
-      $(go.TextBlock, { segmentOffset: new go.Point(0, -14), font: "12px sans-serif", editable: true }, new go.Binding("text", "label").makeTwoWay())
+
+      new go.Binding("location", "loc", go.Point.parse).makeTwoWay(go.Point.stringify),
+
+      $(go.Panel, "Auto", 
+        $(go.Shape, "RoundedRectangle", { strokeWidth: 1, fill: "#d3e6f5", height: 50 }, 
+          new go.Binding("figure", "shape").makeTwoWay(), new go.Binding("fill", "color").makeTwoWay()), 
+          $(go.Panel, "Vertical", $(go.TextBlock, { margin: 5, editable: true, font: "12px sans-serif" }, 
+            new go.Binding("text").makeTwoWay()), 
+            $(go.TextBlock, { margin: 2, editable: true, font: "10px sans-serif", stroke: "#333" }, 
+              new go.Binding("text", "description").makeTwoWay()))),
+      makePort("L", go.Spot.Left, false, true),
+      makePort("R", go.Spot.Right, true, false)
     );
 
-    const model = new go.GraphLinksModel();
+    // Selection adornment for nodes
+    diagram.nodeTemplate.selectionAdornmentTemplate = $(
+      go.Adornment,
+      "Spot",
+      $(go.Panel, "Auto", $(go.Shape, { fill: null, stroke: "blue", strokeWidth: 1 }), $(go.Placeholder)),
+      $(go.Panel, "Horizontal", { alignment: go.Spot.TopLeft, alignmentFocus: go.Spot.BottomLeft, background: "rgba(255,255,255,0.9)" },
+        $("Button", { toolTip: $("ToolTip", $(go.TextBlock, "Edit Node")), "ButtonBorder.stroke": null, "_buttonFillOver": "#3399ff", "_buttonFillPressed": "#0066cc",
+          click: (_, obj) => handleEditNode(obj.part.adornedPart) }, 
+          $(go.TextBlock, "✏️", { margin: 5, font: "20px sans-serif" })),
+        $("Button", { toolTip: $("ToolTip", $(go.TextBlock, "Delete Node")), "ButtonBorder.stroke": null, "_buttonFillOver": "#e35d6a", "_buttonFillPressed": "#c82333", 
+          click: (_, obj) => handleDeleteNode(obj.part.adornedPart) }, 
+          $(go.TextBlock, "🗑", { margin: 5, font: "20px sans-serif" })),
+        $("Button", { toolTip: $("ToolTip", $(go.TextBlock, "Detach from Group")), "ButtonBorder.stroke": null, "_buttonFillOver": "#ffd54f", "_buttonFillPressed": "#e0a800", 
+          click: (_, obj) => { const nodePart = obj.part.adornedPart; 
+            const diagram = nodePart.diagram; 
+            if (!nodePart.containingGroup) { alert("Node is not in any group."); return; } 
+            diagram.startTransaction("detachNode"); 
+            diagram.model.setDataProperty(nodePart.data, "group", null); 
+            diagram.commitTransaction("detachNode"); } }, 
+            $(go.TextBlock, "🔗", { margin: 5, font: "20px sans-serif" }))
+      )
+    );
+
+    // Link template
+    diagram.linkTemplate = $(
+      go.Link,
+      {
+        routing: go.Routing.Normal,
+        curve: go.Curve.JumpOver,
+        corner: 10,
+        relinkableFrom: true,
+        relinkableTo: true,
+        reshapable: true,
+        resegmentable: true,
+        selectable: true,
+        toShortLength: 3,
+        click: (_, link) => handleLinkClick(link.data),
+      },
+      new go.Binding("routing", "routing", (r) => go.Routing[r] || go.Routing.Normal),
+      new go.Binding("curve", "curve", (c) => go.Curve[c] || go.Curve.None),
+      new go.Binding("strokeDashArray", "isDashed", (d) => (d ? [6, 4] : null)),
+      new go.Binding("isAnimated", "animated"),
+      $(go.Shape, { strokeWidth: 2 }, new go.Binding("stroke", "color")),
+      $(go.Shape, { toArrow: "Standard" }, new go.Binding("toArrow", "arrow"), new go.Binding("fill", "color")),
+      $(go.TextBlock, { segmentOffset: new go.Point(0, -10), font: "10px sans-serif", stroke: "#333", editable: true }, 
+      new go.Binding("text", "label").makeTwoWay())
+    );
+
+    // Initialize model
+    const model = new go.GraphLinksModel([], []);
     model.nodeKeyProperty = "key";
+    model.linkFromKeyProperty = "from";
+    model.linkToKeyProperty = "to";
     diagram.model = model;
 
+    // Restore collapsed groups on load
     diagram.addDiagramListener("InitialLayoutCompleted", () => {
-      diagram.findTopLevelGroups().each(g => {
-        if (g.data.isCollapsed) toggleGroupCollapse(g, true);
+      diagram.findTopLevelGroups().each((grp) => {
+        if (grp.data.isCollapsed) toggleGroupCollapse(grp, true);
       });
     });
 
-    // Drag & Drop
+    // Drag and drop handling
+    const div = diagram.div;
+
     const handleDrop = (e) => {
       e.preventDefault();
-      const json = e.dataTransfer.getData("application/my-node");
-      if (!json) return;
-      const data = JSON.parse(json);
-      const pt = diagram.transformViewToDoc(new go.Point(e.clientX - diagramRef.current.getBoundingClientRect().left, e.clientY - diagramRef.current.getBoundingClientRect().top));
+      const data = e.dataTransfer.getData("application/my-node");
+      if (!data) return;
+      const nodeData = JSON.parse(data);
+      const rect = div.getBoundingClientRect();
+      const point = diagram.transformViewToDoc(new go.Point(e.clientX - rect.left, e.clientY - rect.top));
+      const colorMap = { Task: "#fff", Decision: "#fff", Output: "#fff", Default: "#d3e6f5" };
+      const shapeMap = { Task: "RoundedRectangle", Decision: "Diamond", Output: "Triangle", Default: "RoundedRectangle" };
+      diagram.startTransaction("drop");
 
-      diagram.startTransaction("add");
-      if (data.type === "Group") {
-        diagram.model.addNodeData({
-          key: "g" + Date.now(),
-          isGroup: true,
-          text: data.text || "New Group",
-          isCollapsed: false,
-          originalSize: "400 300",
-          loc: go.Point.stringify(pt),
-        });
+      // Add node data
+      if (nodeData.type === "Group") {
+        diagram.model.addNodeData({ 
+          key: Date.now(), 
+          isGroup: true, 
+          text: nodeData.text,
+          size:"400 300", 
+          loc: go.Point.stringify(point) });
       } else {
-        diagram.model.addNodeData({
-          key: Date.now(),
-          text: data.text || "Node",
-          shape: data.type === "Decision" ? "Diamond" : "RoundedRectangle",
-          color: "#e0e7ff",
-          description: "",
-          loc: go.Point.stringify(pt),
-        });
+        diagram.model.addNodeData({ 
+          key: Date.now(), 
+          text: nodeData.text, 
+          type: nodeData.type, 
+          color: colorMap[nodeData.type] || "#d3e6f5", 
+          shape: shapeMap[nodeData.type] || "RoundedRectangle", 
+          loc: go.Point.stringify(point), description: "" });
       }
-      diagram.commitTransaction("add");
+      diagram.commitTransaction("drop");
     };
-
-    const div = diagram.div;
-    div.addEventListener("dragover", e => e.preventDefault());
+    // add event listeners
+    div.addEventListener("dragover", (e) => e.preventDefault());
     div.addEventListener("drop", handleDrop);
-
+    // Cleanup on unmount
     return () => {
-      div.removeEventListener("dragover", () => {});
       div.removeEventListener("drop", handleDrop);
-      diagram.div = null;
+      try { div.removeEventListener("dragover", (e) => e.preventDefault()); } catch (e) {}
+      if (myDiagramRef.current) myDiagramRef.current.div = null;
+      myDiagramRef.current = null;
     };
-  }, [makePort, toggleGroupCollapse, handleEditNode, handleDeleteNode, handleLinkClick]);
+  }, [handleEditNode, handleDeleteNode, handleLinkClick, makePort]);
 
-  // Load flow
+  // Load flow data if editing
   useEffect(() => {
     if (!id || !myDiagramRef.current) return;
-    const flows = JSON.parse(localStorage.getItem("Flows") || "[]");
-    const flow = flows.find(f => f.id === id);
-    if (flow) {
-      setSaveFormData({ flowName: flow.flowName || "", flowDescription: flow.flowDescription || "" });
-      const model = new go.GraphLinksModel(flow.nodes, flow.links);
+    const savedFlows = JSON.parse(localStorage.getItem("Flows")) || [];
+    const currentFlow = savedFlows.find((flow) => flow.id === id);
+    const diagram = myDiagramRef.current;
+    if (currentFlow) {
+      setSaveFormData({ flowName: currentFlow.flowName || "", flowDescription: currentFlow.flowDescription || "" });
+      const model = new go.GraphLinksModel(currentFlow.nodes, currentFlow.links);
       model.nodeKeyProperty = "key";
-      myDiagramRef.current.model = model;
+      model.linkFromKeyProperty = "from";
+      model.linkToKeyProperty = "to";
+      diagram.model = model;
+    } else {
+      setSaveFormData({ flowName: "", flowDescription: "" });
     }
   }, [id]);
-
-  // Save & modals (unchanged)
+  // Update node
   const handleUpdateNode = (e) => {
     e.preventDefault();
-    const d = myDiagramRef.current;
-    d.startTransaction();
-    d.model.set(editingNode.data, "text", formData.name);
-    d.model.set(editingNode.data, "description", formData.description);
-    d.commitTransaction();
+    const diagram = myDiagramRef.current;
+    if (!diagram || !editingNode) return;
+    diagram.startTransaction("updateNode");
+    diagram.model.setDataProperty(editingNode.data, "text", formData.name);
+    diagram.model.setDataProperty(editingNode.data, "description", formData.description);
+    diagram.commitTransaction("updateNode");
     setEditingNode(null);
   };
-
+  // Save or update flow
   const handleSubmitSaveForm = (e) => {
     e.preventDefault();
-    const d = myDiagramRef.current;
-    const fid = id || "flow-" + Date.now();
-    const flows = JSON.parse(localStorage.getItem("Flows") || "[]");
-    const data = { id: fid, flowName: saveFormData.flowName, flowDescription: saveFormData.flowDescription, nodes: d.model.nodeDataArray, links: d.model.linkDataArray };
-    const i = flows.findIndex(f => f.id === fid);
-    if (i >= 0) flows[i] = data; else flows.push(data);
-    localStorage.setItem("Flows", JSON.stringify(flows));
-    alert("Saved!");
+    const diagram = myDiagramRef.current;
+    if (!diagram) return;
+    const flowId = id || "flow-" + Date.now();
+    const existingFlows = JSON.parse(localStorage.getItem("Flows")) || [];
+    const existingIndex = existingFlows.findIndex((flow) => flow.id === flowId);
+    const dataToSave = { id: flowId, flowName: saveFormData.flowName, flowDescription: saveFormData.flowDescription, nodes: diagram.model.nodeDataArray, links: diagram.model.linkDataArray };
+    if (existingIndex !== -1) existingFlows[existingIndex] = dataToSave; else existingFlows.push(dataToSave);
+    localStorage.setItem("Flows", JSON.stringify(existingFlows));
+    alert(id ? "Flow updated successfully!" : "Flow saved successfully!");
     navigate("/flows");
   };
 
